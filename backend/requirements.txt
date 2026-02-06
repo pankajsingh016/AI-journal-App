@@ -1,0 +1,15 @@
+# AI Journal Backend - Python Dependencies
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic[email]==2.10.3
+pydantic-settings==2.6.1
+email-validator>=2.0.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.17
+supabase==2.10.0
+httpx>=0.26,<0.28
+openai>=1.0.0
+python-dotenv==1.0.1
+structlog==24.4.0
+sentry-sdk[fastapi]==2.18.0

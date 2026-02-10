@@ -1,0 +1,87 @@
+# -----------------------------------------------------------------------------
+# General / OS
+# -----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+Thumbs.db
+*.log
+*.swp
+*.swo
+*~
+
+# -----------------------------------------------------------------------------
+# IDE / Editor
+# -----------------------------------------------------------------------------
+.idea/
+*.iml
+.vscode/
+*.code-workspace
+
+# -----------------------------------------------------------------------------
+# Flutter / Dart (flutter_app)
+# -----------------------------------------------------------------------------
+flutter_app/.dart_tool/
+flutter_app/.packages
+flutter_app/.flutter-plugins
+flutter_app/.flutter-plugins-dependencies
+flutter_app/build/
+flutter_app/**/*.g.dart
+flutter_app/**/*.freezed.dart
+flutter_app/coverage/
+flutter_app/**/app.*.symbols
+flutter_app/**/app.*.map.json
+
+# Android
+flutter_app/android/.gradle/
+flutter_app/android/app/debug/
+flutter_app/android/app/profile/
+flutter_app/android/app/release/
+flutter_app/android/**/local.properties
+flutter_app/android/**/*.jks
+flutter_app/android/**/.cxx/
+
+# iOS
+flutter_app/ios/Flutter/.last_build_id
+flutter_app/ios/Flutter/Flutter.framework
+flutter_app/ios/Pods/
+flutter_app/ios/.symlinks/
+flutter_app/ios/Flutter/App.framework
+flutter_app/ios/**/Runner.xcworkspace/xcuserdata/
+
+# -----------------------------------------------------------------------------
+# Python / Backend
+# -----------------------------------------------------------------------------
+backend/.venv/
+backend/venv/
+backend/env/
+backend/.env
+backend/**/__pycache__/
+backend/**/*.py[cod]
+backend/**/*.pyo
+backend/**/.mypy_cache/
+backend/**/.pytest_cache/
+backend/**/.coverage
+backend/htmlcov/
+backend/dist/
+backend/build/
+backend/*.egg-info/
+backend/**/*.egg-info/
+backend/**/*.egg
+
+# Keep env example for setup instructions
+!backend/.env.example
+
+# -----------------------------------------------------------------------------
+# Secrets / Env (do not commit)
+# -----------------------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+flutter_app/assets/.env
+!flutter_app/assets/.env.example
+
+# -----------------------------------------------------------------------------
+# Optional: uncomment if you use Node/tooling
+# -----------------------------------------------------------------------------
+# node_modules/
+# .npm

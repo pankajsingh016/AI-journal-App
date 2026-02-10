@@ -67,7 +67,10 @@ class ApiClient {
   Exception _mapError(DioException err) {
     if (err.type == DioExceptionType.connectionTimeout ||
         err.type == DioExceptionType.connectionError) {
-      return NetworkException();
+      return NetworkException(
+        'Could not reach the server. Check that the backend is running and '
+        'API_BASE_URL in assets/.env is correct (e.g. http://localhost:8000 or your machine IP).',
+      );
     }
     final status = err.response?.statusCode;
     final data = err.response?.data;
@@ -116,7 +119,12 @@ class ApiClient {
 
   Future<List<dynamic>> getList(String path, {Map<String, dynamic>? queryParameters}) async {
     final r = await _dio.get<dynamic>(path, queryParameters: queryParameters);
-    if (r.data is List) return r.data as List<dynamic>;
+    final data = r.data;
+    if (data is List) return data as List<dynamic>;
+    if (data is Map) {
+      final list = data['data'] ?? data['items'] ?? data['results'] ?? data['entries'];
+      if (list is List) return list as List<dynamic>;
+    }
     return [];
   }
 

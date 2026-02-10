@@ -2,7 +2,7 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -78,6 +78,36 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             code=ErrorCode.VALIDATION_ERROR,
             message=str(msg),
             details={"field": field, "constraint": first.get("type")},
+        )).model_dump(),
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Return HTTPException as our API error format so the client gets a consistent body."""
+    detail = exc.detail
+    if isinstance(detail, dict):
+        msg = detail.get("message", detail.get("detail", str(detail)))
+    else:
+        msg = str(detail)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=APIErrorResponse(error=ErrorBody(
+            code=ErrorCode.INTERNAL_SERVER_ERROR if exc.status_code >= 500 else "ERROR",
+            message=msg,
+        )).model_dump(),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Catch-all so the client gets a proper JSON error instead of a traceback."""
+    return JSONResponse(
+        status_code=500,
+        content=APIErrorResponse(error=ErrorBody(
+            code=ErrorCode.INTERNAL_SERVER_ERROR,
+            message="An unexpected error occurred. Please try again.",
+            details={"hint": str(exc)},
         )).model_dump(),
     )
 

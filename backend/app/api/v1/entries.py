@@ -10,6 +10,8 @@ from app.core.errors import NotFoundError, ValidationError
 from app.db.supabase import get_supabase
 from app.schemas.entry import EntryCreate, EntryUpdate, EntryResponse, MOOD_VALUES
 
+from app.api.v1.user import _ensure_user_row
+
 router = APIRouter()
 
 
@@ -28,7 +30,8 @@ async def list_entries(
     user_id: str = Depends(get_current_user_id),
 ):
     supabase = get_supabase()
-    q = supabase.table("journal_entries").select("*, entry_tags(tag)").eq("user_id", user_id).is_("deleted_at", "null")
+    # Use select("*") only so list always works; tags loaded only for get_entry
+    q = supabase.table("journal_entries").select("*").eq("user_id", user_id).is_("deleted_at", "null")
     if is_draft is not None:
         q = q.eq("is_draft", is_draft)
     if is_favorite is not None:
@@ -38,36 +41,38 @@ async def list_entries(
     r = q.execute()
     out = []
     for row in (r.data or []):
-        tags = [t["tag"] for t in row.get("entry_tags", [])] if isinstance(row.get("entry_tags"), list) else []
-        out.append(_row_to_response(row, tags))
+        out.append(_row_to_response(row, tags=None))
     return out
 
 
 def _row_to_response(row: dict, tags: list[str] | None = None) -> EntryResponse:
     row = dict(row)
-    if row.get("entry_time"):
-        row["entry_time"] = str(row["entry_time"])[:8] if len(str(row["entry_time"])) > 8 else str(row["entry_time"])
-    if row.get("entry_date"):
-        row["entry_date"] = str(row["entry_date"])
+    # Normalise types for JSON (Supabase may return UUID/datetime objects)
+    def _str(v):
+        return str(v) if v is not None else None
+    if row.get("entry_time") is not None:
+        row["entry_time"] = _str(row["entry_time"])[:8] if len(_str(row["entry_time"])) > 8 else _str(row["entry_time"])
+    if row.get("entry_date") is not None:
+        row["entry_date"] = _str(row["entry_date"])
     return EntryResponse(
-        id=row["id"],
-        user_id=row["user_id"],
-        title=row.get("title"),
-        content=row["content"],
+        id=_str(row.get("id")),
+        user_id=_str(row.get("user_id")),
+        title=row.get("title") if isinstance(row.get("title"), (str, type(None))) else _str(row.get("title")),
+        content=row.get("content") or "",
         mood=row.get("mood"),
         mood_intensity=row.get("mood_intensity"),
-        entry_date=row["entry_date"],
+        entry_date=row.get("entry_date") or "",
         entry_time=row.get("entry_time") or "00:00:00",
-        word_count=row.get("word_count", 0),
-        character_count=row.get("character_count", 0),
-        is_draft=row.get("is_draft", False),
-        is_favorite=row.get("is_favorite", False),
+        word_count=row.get("word_count") or 0,
+        character_count=row.get("character_count") or 0,
+        is_draft=bool(row.get("is_draft", False)),
+        is_favorite=bool(row.get("is_favorite", False)),
         weather=row.get("weather"),
         location=row.get("location"),
-        template_id=row.get("template_id"),
+        template_id=_str(row.get("template_id")) if row.get("template_id") is not None else None,
         created_at=row["created_at"],
         updated_at=row["updated_at"],
-        tags=tags or [],
+        tags=tags if tags is not None else [],
     )
 
 
@@ -130,35 +135,62 @@ async def get_entry(entry_id: UUID, user_id: str = Depends(get_current_user_id))
 @router.post("", response_model=EntryResponse, status_code=status.HTTP_201_CREATED)
 async def create_entry(body: EntryCreate, user_id: str = Depends(get_current_user_id)):
     _ensure_mood(body.mood)
+    # Ensure user row exists in public.users (journal_entries.user_id FK references it)
+    _ensure_user_row(user_id)
     supabase = get_supabase()
     entry_date = body.entry_date or date.today()
     entry_time = body.entry_time or time(0, 0, 0)
+    # Ensure time is HH:MM:SS for Postgres TIME column
+    time_str = str(entry_time)
+    if len(time_str) > 8:
+        time_str = time_str[:8]
     word_count = len(body.content.split())
     payload = {
         "user_id": user_id,
-        "title": body.title,
         "content": body.content,
-        "mood": body.mood,
-        "mood_intensity": body.mood_intensity,
         "entry_date": str(entry_date),
-        "entry_time": str(entry_time),
+        "entry_time": time_str,
         "word_count": word_count,
         "character_count": len(body.content),
         "is_draft": body.is_draft,
         "is_favorite": body.is_favorite,
-        "weather": body.weather,
-        "location": body.location,
-        "location_lat": body.location_lat,
-        "location_lng": body.location_lng,
-        "template_id": body.template_id,
     }
-    r = supabase.table("journal_entries").insert(payload).execute()
+    if body.title is not None:
+        payload["title"] = body.title
+    if body.mood is not None:
+        payload["mood"] = body.mood
+    if body.mood_intensity is not None:
+        payload["mood_intensity"] = body.mood_intensity
+    if body.weather is not None:
+        payload["weather"] = body.weather
+    if body.location is not None:
+        payload["location"] = body.location
+    if body.location_lat is not None:
+        payload["location_lat"] = body.location_lat
+    if body.location_lng is not None:
+        payload["location_lng"] = body.location_lng
+    if body.template_id is not None:
+        payload["template_id"] = str(body.template_id)
+    try:
+        r = supabase.table("journal_entries").insert(payload).execute()
+    except Exception as e:
+        err_msg = str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error while creating entry: {err_msg}",
+        )
     if not r.data or len(r.data) == 0:
-        raise HTTPException(status_code=500, detail="Failed to create entry")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Entry was created but server could not return it. Please refresh your entries.",
+        )
     row = r.data[0]
     if body.tags:
         for tag in body.tags:
-            supabase.table("entry_tags").insert({"entry_id": row["id"], "tag": tag}).execute()
+            try:
+                supabase.table("entry_tags").insert({"entry_id": row["id"], "tag": tag}).execute()
+            except Exception:
+                pass  # non-fatal if tag insert fails
     return _row_to_response(row, body.tags or [])
 
 
@@ -193,9 +225,11 @@ async def patch_entry(entry_id: UUID, body: EntryUpdate, user_id: str = Depends(
 
 @router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_entry(entry_id: UUID, user_id: str = Depends(get_current_user_id)):
-    supabase = get_supabase()
     from datetime import datetime, timezone
-    supabase.table("journal_entries").update({"deleted_at": datetime.now(timezone.utc).isoformat()}).eq("id", str(entry_id)).eq("user_id", user_id).execute()
+    supabase = get_supabase()
+    supabase.table("journal_entries").update({
+        "deleted_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", str(entry_id)).eq("user_id", user_id).execute()
     return None
 
 

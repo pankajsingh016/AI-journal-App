@@ -39,26 +39,34 @@ class EntryModel {
   final List<String>? tags;
 
   factory EntryModel.fromJson(Map<String, dynamic> json) {
+    String? _str(dynamic v) => v == null ? null : v.toString();
+    String _strReq(dynamic v) => v?.toString() ?? '';
     return EntryModel(
-      id: json['id'] as String,
-      userId: json['user_id'] as String,
-      title: json['title'] as String?,
-      content: json['content'] as String? ?? '',
-      mood: json['mood'] as String?,
-      moodIntensity: json['mood_intensity'] as int?,
-      entryDate: json['entry_date'] as String? ?? '',
-      entryTime: json['entry_time'] as String? ?? '00:00:00',
-      wordCount: json['word_count'] as int? ?? 0,
-      characterCount: json['character_count'] as int? ?? 0,
-      isDraft: json['is_draft'] as bool? ?? false,
-      isFavorite: json['is_favorite'] as bool? ?? false,
-      weather: json['weather'] as Map<String, dynamic>?,
-      location: json['location'] as String?,
-      templateId: json['template_id'] as String?,
-      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'] as String) : null,
-      updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'] as String) : null,
-      tags: (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList(),
+      id: _strReq(json['id']),
+      userId: _strReq(json['user_id']),
+      title: _str(json['title']),
+      content: _str(json['content']) ?? '',
+      mood: _str(json['mood']),
+      moodIntensity: json['mood_intensity'] is int ? json['mood_intensity'] as int : (json['mood_intensity'] != null ? int.tryParse(json['mood_intensity'].toString()) : null),
+      entryDate: _str(json['entry_date']) ?? '',
+      entryTime: _str(json['entry_time']) ?? '00:00:00',
+      wordCount: (json['word_count'] is int) ? json['word_count'] as int : (int.tryParse(json['word_count']?.toString() ?? '') ?? 0),
+      characterCount: (json['character_count'] is int) ? json['character_count'] as int : (int.tryParse(json['character_count']?.toString() ?? '') ?? 0),
+      isDraft: json['is_draft'] == true,
+      isFavorite: json['is_favorite'] == true,
+      weather: json['weather'] is Map ? Map<String, dynamic>.from(json['weather'] as Map) : null,
+      location: _str(json['location']),
+      templateId: _str(json['template_id']),
+      createdAt: _parseDateTime(json['created_at']),
+      updatedAt: _parseDateTime(json['updated_at']),
+      tags: (json['tags'] is List) ? (json['tags'] as List).map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList() : null,
     );
+  }
+
+  static DateTime? _parseDateTime(dynamic v) {
+    if (v == null) return null;
+    if (v is DateTime) return v;
+    return DateTime.tryParse(v.toString());
   }
 
   Map<String, dynamic> toJson() => {

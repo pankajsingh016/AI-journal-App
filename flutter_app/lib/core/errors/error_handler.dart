@@ -17,8 +17,8 @@ class ErrorHandler {
     if (error is NotFoundException) return error.message;
     if (error is RateLimitException) return error.message;
     final msg = error?.toString() ?? 'Something went wrong. Please try again.';
-    if (msg.contains('SocketException') || msg.contains('Connection')) {
-      return 'No internet connection. Please check your network.';
+    if (msg.contains('SocketException') || msg.contains('Connection refused') || msg.contains('Connection timed out')) {
+      return 'Could not reach the server. Check that the backend is running and the API URL is correct.';
     }
     return 'Something went wrong. Please try again.';
   }

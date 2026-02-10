@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import 'package:ai_journal/core/config/theme/app_theme.dart';
 import 'package:ai_journal/core/config/routes/app_router.dart';
 import 'package:ai_journal/presentation/providers/auth_provider.dart';
 import 'package:ai_journal/presentation/providers/entry_provider.dart';
+import 'package:ai_journal/presentation/providers/preferences_provider.dart';
 
+/// Caches [GoRouter] so it is created once. Recreating it on every build broke navigation (e.g. settings icon).
 class App extends StatelessWidget {
   const App({super.key});
 
@@ -15,18 +18,39 @@ class App extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()..init()),
         ChangeNotifierProvider(create: (_) => EntryProvider()..init()),
+        ChangeNotifierProvider(create: (_) => PreferencesProvider()..init()),
       ],
-      child: Builder(
-        builder: (context) {
-          return MaterialApp.router(
-            title: 'AI Journal',
-            theme: AppTheme.light,
-            darkTheme: AppTheme.dark,
-            themeMode: ThemeMode.system,
-            routerConfig: AppRouter.createRouter(context),
-          );
-        },
-      ),
+      child: const _AppRouterScope(),
+    );
+  }
+}
+
+class _AppRouterScope extends StatefulWidget {
+  const _AppRouterScope();
+
+  @override
+  State<_AppRouterScope> createState() => _AppRouterScopeState();
+}
+
+class _AppRouterScopeState extends State<_AppRouterScope> {
+  GoRouter? _router;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _router ??= AppRouter.createRouter(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_router == null) return const SizedBox.shrink();
+    final themeMode = context.watch<PreferencesProvider>().themeMode;
+    return MaterialApp.router(
+      title: 'AI Journal',
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: themeMode,
+      routerConfig: _router,
     );
   }
 }

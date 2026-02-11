@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.deps import get_current_user_id
 from app.db.supabase import get_supabase
+from app.api.v1.user import _compute_streaks_from_entries
 
 router = APIRouter()
 
@@ -45,16 +46,10 @@ async def writing_stats(user_id: str = Depends(get_current_user_id)):
 
 @router.get("/streaks")
 async def streaks(user_id: str = Depends(get_current_user_id)):
-    supabase = get_supabase()
-    r = supabase.table("streaks").select("*").eq("user_id", user_id).execute()
-    if not r.data or len(r.data) == 0:
-        return {"current_streak": 0, "longest_streak": 0}
-    row = r.data[0]
+    current_streak, longest_streak = _compute_streaks_from_entries(user_id)
     return {
-        "current_streak": row.get("current_streak", 0),
-        "longest_streak": row.get("longest_streak", 0),
-        "last_entry_date": row.get("last_entry_date"),
-        "streak_start_date": row.get("streak_start_date"),
+        "current_streak": current_streak,
+        "longest_streak": longest_streak,
     }
 
 
@@ -62,15 +57,10 @@ async def streaks(user_id: str = Depends(get_current_user_id)):
 async def dashboard(user_id: str = Depends(get_current_user_id)):
     supabase = get_supabase()
     entries_r = supabase.table("journal_entries").select("id, word_count, entry_date, mood").eq("user_id", user_id).is_("deleted_at", "null").eq("is_draft", False).execute()
-    streak_r = supabase.table("streaks").select("current_streak, longest_streak").eq("user_id", user_id).execute()
     entries = entries_r.data or []
     total_entries = len(entries)
     total_words = sum(e.get("word_count", 0) for e in entries)
-    current_streak = 0
-    longest_streak = 0
-    if streak_r.data and len(streak_r.data) > 0:
-        current_streak = streak_r.data[0].get("current_streak", 0)
-        longest_streak = streak_r.data[0].get("longest_streak", 0)
+    current_streak, longest_streak = _compute_streaks_from_entries(user_id)
     recent = list(reversed(entries[-5:])) if entries else []
     return {
         "total_entries": total_entries,

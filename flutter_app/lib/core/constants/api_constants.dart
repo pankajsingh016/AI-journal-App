@@ -8,6 +8,7 @@ class ApiConstants {
   static const String authForgotPassword = '/auth/forgot-password';
   static const String authResetPassword = '/auth/reset-password';
   static const String userProfile = '/user/profile';
+  static const String userAvatar = '/user/avatar';
   static const String userPreferences = '/user/preferences';
   static const String userStats = '/user/stats';
   static const String entries = '/entries';
@@ -15,6 +16,7 @@ class ApiConstants {
   static const String entriesDrafts = '/entries/drafts';
   static const String entriesFavorites = '/entries/favorites';
   static const String entriesCalendar = '/entries/calendar';
+  static const String entriesDates = '/entries/dates';
   static const String entriesOnThisDay = '/entries/on-this-day';
   static const String search = '/search';
   static const String aiGeneratePrompt = '/ai/generate-prompt';

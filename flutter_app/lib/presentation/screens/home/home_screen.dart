@@ -9,6 +9,7 @@ import 'package:ai_journal/presentation/providers/auth_provider.dart';
 import 'package:ai_journal/presentation/providers/entry_provider.dart';
 import 'package:ai_journal/presentation/screens/entries/entries_list_screen.dart';
 import 'package:ai_journal/presentation/screens/entry/entry_editor_screen.dart';
+import 'package:ai_journal/presentation/screens/profile/profile_screen.dart';
 import 'package:ai_journal/presentation/screens/settings/settings_screen.dart';
 import 'package:ai_journal/presentation/widgets/entry_card_actions.dart';
 
@@ -31,7 +32,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<EntryProvider>().loadRecentEntries();
+      final ep = context.read<EntryProvider>();
+      ep.loadRecentEntries();
+      ep.loadUserStats();
+      ep.loadCalendarDates();
     });
   }
 
@@ -58,16 +62,23 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await auth.logout();
-              if (context.mounted) context.go('/login');
+            icon: const Icon(Icons.person_outline),
+            onPressed: () {
+              rootNavigatorKey.currentState?.push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ProfileScreen(),
+                ),
+              );
             },
           ),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () => entryProvider.loadRecentEntries(),
+        onRefresh: () async {
+          await entryProvider.loadRecentEntries();
+          await entryProvider.loadUserStats();
+          await entryProvider.loadCalendarDates();
+        },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
@@ -88,11 +99,26 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
               ),
               const SizedBox(height: 24),
+              Text(
+                'Journal calendar',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 88,
+                child: JournalCalendarStrip(datesWithEntries: entryProvider.datesWithEntries),
+              ),
+              const SizedBox(height: 20),
               Card(
                 child: ListTile(
                   leading: const CircleAvatar(child: Icon(Icons.local_fire_department)),
-                  title: const Text('Current streak'),
-                  subtitle: const Text('0 days – keep writing!'),
+                  title: const Text('Your streaks'),
+                  subtitle: Text(
+                    'Streak till today: ${entryProvider.currentStreak} day${entryProvider.currentStreak == 1 ? '' : 's'}\nBest: ${entryProvider.longestStreak} day${entryProvider.longestStreak == 1 ? '' : 's'}${entryProvider.currentStreak == 0 && entryProvider.longestStreak == 0 ? ' – keep writing!' : ''}',
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -267,6 +293,116 @@ class _RecentEntryTile extends StatelessWidget {
           }
         },
       ),
+    );
+  }
+}
+
+const List<String> _dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/// Width of each day card (SizedBox 56 + horizontal padding 4*2).
+const double _calendarItemWidth = 64;
+
+class JournalCalendarStrip extends StatefulWidget {
+  const JournalCalendarStrip({super.key, required this.datesWithEntries});
+
+  final Set<String> datesWithEntries;
+
+  @override
+  State<JournalCalendarStrip> createState() => _JournalCalendarStripState();
+}
+
+class _JournalCalendarStripState extends State<JournalCalendarStrip> {
+  final ScrollController _scrollController = ScrollController();
+
+  static String _dateKey(DateTime d) {
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      final today = DateTime.now();
+      final start = today.subtract(const Duration(days: 60));
+      final todayIndex = today.difference(DateTime(start.year, start.month, start.day)).inDays;
+      final offset = (todayIndex * _calendarItemWidth).toDouble();
+      _scrollController.jumpTo(offset.clamp(0.0, _scrollController.position.maxScrollExtent));
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final today = DateTime.now();
+    final start = today.subtract(const Duration(days: 60));
+    final days = <DateTime>[];
+    for (var d = start; d.isBefore(today.add(const Duration(days: 31))) || d.isAtSameMomentAs(today.add(const Duration(days: 31))); d = d.add(const Duration(days: 1))) {
+      days.add(d);
+    }
+    return ListView.builder(
+      controller: _scrollController,
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      itemCount: days.length,
+      itemBuilder: (context, index) {
+        final d = days[index];
+        final dateKey = _dateKey(d);
+        final hasEntry = widget.datesWithEntries.contains(dateKey);
+        final isToday = d.year == today.year && d.month == today.month && d.day == today.day;
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Material(
+            color: isToday
+                ? Theme.of(context).colorScheme.primaryContainer
+                : Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {},
+              child: SizedBox(
+                width: 56,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '${d.day}',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: isToday
+                                ? Theme.of(context).colorScheme.onPrimaryContainer
+                                : Theme.of(context).colorScheme.onSurface,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _dayNames[d.weekday - 1],
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: isToday
+                                ? Theme.of(context).colorScheme.onPrimaryContainer
+                                : Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                    if (hasEntry) ...[
+                      const SizedBox(height: 4),
+                      Icon(
+                        Icons.local_fire_department,
+                        size: 20,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

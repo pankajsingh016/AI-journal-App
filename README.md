@@ -52,7 +52,7 @@ Errors follow the spec format: `{"error": {"code": "...", "message": "...", "det
 
 1. Create a Supabase project.
 2. In SQL Editor, run `supabase/schema.sql` (creates tables, RLS, triggers, full-text search).
-3. Create Storage bucket `avatars` (and optionally `journal-media`) if using avatar upload and media.
+3. Create Storage bucket **`avatars`** for profile pictures: **[Step-by-step guide: Create avatars bucket in Supabase](docs/SUPABASE_STORAGE_AVATARS.md)**. Optionally create `journal-media` for entry attachments later.
 
 ## Flutter app
 

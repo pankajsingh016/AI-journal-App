@@ -16,6 +16,11 @@
 - Settings from env (`.env`); Supabase and JWT have placeholder defaults so app starts without env.
 - Supabase client uses **service key** for auth and table access.
 
+### Database ready for image upload
+- **Profile avatars**: `users.avatar_url` (TEXT) stores the public URL; files are stored in Supabase **Storage** bucket `avatars` (path `{user_id}/avatar.{ext}`). No DB schema change needed for avatars.
+- **Journal media (future)**: Table `entry_media` exists with `storage_path`, `storage_bucket` (default `journal-media`), `media_type`, `file_name`, `mime_type`, etc. Create Storage bucket `journal-media` when adding entry attachments.
+- **Avatar upload**: Backend `PATCH /user/avatar` expects multipart file; all `file_options` values are strings (e.g. `upsert: "true"`) to avoid "Bool object has no attribute encode" from the storage client. Before uploading, the backend deletes any existing avatar file(s) for that user in the bucket (`_delete_old_avatars`) so old photos are not left in storage.
+
 ---
 
 ## Flutter

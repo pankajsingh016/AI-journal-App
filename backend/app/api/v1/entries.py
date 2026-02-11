@@ -121,6 +121,22 @@ async def on_this_day(
     return {"entries": data}
 
 
+@router.get("/dates")
+async def entry_dates(user_id: str = Depends(get_current_user_id)):
+    """Return distinct dates (YYYY-MM-DD) when the user has at least one published entry."""
+    supabase = get_supabase()
+    r = supabase.table("journal_entries").select("entry_date").eq("user_id", user_id).is_("deleted_at", "null").eq("is_draft", False).execute()
+    dates = set()
+    for row in (r.data or []):
+        d = row.get("entry_date")
+        if d is None:
+            continue
+        s = str(d).strip()[:10]
+        if len(s) == 10 and s[4] == "-" and s[7] == "-":
+            dates.add(s)
+    return {"dates": sorted(dates)}
+
+
 @router.get("/{entry_id}", response_model=EntryResponse)
 async def get_entry(entry_id: UUID, user_id: str = Depends(get_current_user_id)):
     supabase = get_supabase()

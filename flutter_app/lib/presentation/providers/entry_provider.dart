@@ -13,12 +13,18 @@ class EntryProvider with ChangeNotifier {
   List<EntryModel> _drafts = [];
   List<EntryModel> _recentEntries = [];
   List<EntryModel> _allEntries = [];
+  int _currentStreak = 0;
+  int _longestStreak = 0;
+  Set<String> _datesWithEntries = {};
 
   bool get isLoading => _isLoading;
   String? get error => _error;
   List<EntryModel> get drafts => List.unmodifiable(_drafts);
   List<EntryModel> get recentEntries => List.unmodifiable(_recentEntries);
   List<EntryModel> get allEntries => List.unmodifiable(_allEntries);
+  int get currentStreak => _currentStreak;
+  int get longestStreak => _longestStreak;
+  Set<String> get datesWithEntries => Set.unmodifiable(_datesWithEntries);
 
   Future<void> init() async {
     await _repo.init();
@@ -60,6 +66,35 @@ class EntryProvider with ChangeNotifier {
       return null;
     } finally {
       _setLoading(false);
+    }
+  }
+
+  /// Load dates when user has published entries (for calendar).
+  Future<void> loadCalendarDates() async {
+    try {
+      _datesWithEntries = await _repo.getEntryDates();
+      notifyListeners();
+    } catch (_) {
+      _datesWithEntries = {};
+      notifyListeners();
+    }
+  }
+
+  /// Load user stats (streak, etc.) for the home screen.
+  Future<void> loadUserStats() async {
+    try {
+      final stats = await _repo.getUserStats();
+      _currentStreak = stats['current_streak'] is int
+          ? stats['current_streak'] as int
+          : int.tryParse(stats['current_streak']?.toString() ?? '0') ?? 0;
+      _longestStreak = stats['longest_streak'] is int
+          ? stats['longest_streak'] as int
+          : int.tryParse(stats['longest_streak']?.toString() ?? '0') ?? 0;
+      notifyListeners();
+    } catch (_) {
+      _currentStreak = 0;
+      _longestStreak = 0;
+      notifyListeners();
     }
   }
 

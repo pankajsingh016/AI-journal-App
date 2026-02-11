@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 
 import 'package:ai_journal/core/errors/error_handler.dart';
 import 'package:ai_journal/data/models/user_model.dart';
@@ -66,6 +67,18 @@ class AuthProvider with ChangeNotifier {
     _user = null;
     _error = null;
     notifyListeners();
+  }
+
+  Future<bool> updateAvatar(XFile imageFile) async {
+    try {
+      _user = await _repo.updateAvatar(imageFile);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = ErrorHandler.getMessage(e);
+      notifyListeners();
+      return false;
+    }
   }
 
   void clearError() {

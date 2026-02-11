@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -89,10 +92,18 @@ class ApiClient {
     if (data == null) return fallback;
     if (data is String && data.trim().isNotEmpty) return data.trim();
     if (data is! Map) return fallback;
-    // Our API: { "error": { "message": "..." } }
+    // Our API: { "error": { "message": "...", "details": { "hint": "..." } } }
     if (data['error'] is Map) {
-      final msg = (data['error'] as Map)['message'];
-      if (msg is String && msg.isNotEmpty) return msg;
+      final err = data['error'] as Map;
+      final msg = err['message'];
+      if (msg is String && msg.isNotEmpty) {
+        const generic = 'An unexpected error occurred. Please try again.';
+        if (msg == generic && err['details'] is Map) {
+          final hint = (err['details'] as Map)['hint'];
+          if (hint is String && hint.isNotEmpty) return hint;
+        }
+        return msg;
+      }
     }
     // FastAPI HTTPException: { "detail": { "error": { "message": "..." } } } or { "detail": "..." }
     final detail = data['detail'];
@@ -140,6 +151,37 @@ class ApiClient {
 
   Future<void> delete(String path) async {
     await _dio.delete(path);
+  }
+
+  /// PATCH with multipart file (e.g. avatar upload). Uses [File] path (mobile/desktop).
+  Future<Map<String, dynamic>> patchMultipart(
+    String path,
+    File file, {
+    String fieldName = 'file',
+  }) async {
+    final name = file.path.split(RegExp(r'[/\\]')).last;
+    final filename = name.contains('.') ? name : 'avatar.jpg';
+    final formData = FormData.fromMap({
+      fieldName: await MultipartFile.fromFile(file.path, filename: filename),
+    });
+    final r = await _dio.patch<dynamic>(path, data: formData);
+    return _toMap(r.data);
+  }
+
+  /// PATCH with multipart from [XFile] (works on all platforms including web).
+  Future<Map<String, dynamic>> patchMultipartXFile(
+    String path,
+    XFile xFile, {
+    String fieldName = 'file',
+  }) async {
+    final bytes = await xFile.readAsBytes();
+    final name = xFile.name;
+    final filename = (name != null && name.contains('.')) ? name : 'avatar.jpg';
+    final formData = FormData.fromMap({
+      fieldName: MultipartFile.fromBytes(bytes, filename: filename),
+    });
+    final r = await _dio.patch<dynamic>(path, data: formData);
+    return _toMap(r.data);
   }
 
   static Map<String, dynamic> _toMap(dynamic data) {

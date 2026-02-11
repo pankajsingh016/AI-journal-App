@@ -1,4 +1,5 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 
 import 'package:ai_journal/core/constants/api_constants.dart';
 import 'package:ai_journal/core/constants/storage_constants.dart';
@@ -44,6 +45,11 @@ class AuthRepository {
     final data = await _api.get(ApiConstants.userProfile);
     await _storage.write(key: StorageConstants.userId, value: data['id'] as String?);
     return UserModel.fromJson(data);
+  }
+
+  Future<UserModel> updateAvatar(XFile imageFile) async {
+    await _api.patchMultipartXFile(ApiConstants.userAvatar, imageFile);
+    return await fetchProfile();
   }
 
   Future<bool> get isLoggedIn async {

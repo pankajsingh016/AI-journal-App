@@ -104,6 +104,20 @@ class EntryRepository {
     await _api.delete(ApiConstants.entryId(id));
   }
 
+  /// Get user stats (total entries, words, current/longest streak).
+  Future<Map<String, dynamic>> getUserStats() async {
+    final data = await _api.get(ApiConstants.userStats);
+    return data;
+  }
+
+  /// Get dates (YYYY-MM-DD) when the user has at least one published entry.
+  Future<Set<String>> getEntryDates() async {
+    final data = await _api.get(ApiConstants.entriesDates);
+    final list = data['dates'];
+    if (list is! List) return {};
+    return list.map((e) => e?.toString() ?? '').where((s) => s.length >= 10).toSet();
+  }
+
   /// Get an AI-generated journaling prompt (inspiration).
   Future<String> getInspirationPrompt() async {
     final data = await _api.post(ApiConstants.aiGeneratePrompt, {});

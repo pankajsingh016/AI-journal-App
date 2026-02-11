@@ -123,6 +123,10 @@ class _EntryEditorScreenState extends State<EntryEditorScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Entry published')),
       );
+      await entryProvider.loadRecentEntries();
+      await entryProvider.loadUserStats();
+      await entryProvider.loadCalendarDates();
+      if (!mounted) return;
       Navigator.of(context).pop();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(

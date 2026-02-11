@@ -8,6 +8,7 @@ import 'package:ai_journal/presentation/screens/auth/signup_screen.dart';
 import 'package:ai_journal/presentation/screens/entries/entries_list_screen.dart';
 import 'package:ai_journal/presentation/screens/entry/entry_editor_screen.dart';
 import 'package:ai_journal/presentation/screens/home/home_screen.dart';
+import 'package:ai_journal/presentation/screens/profile/profile_screen.dart';
 import 'package:ai_journal/presentation/screens/settings/settings_screen.dart';
 
 /// Global key for the root navigator (used by GoRouter). Use this to push
@@ -45,6 +46,10 @@ class AppRouter {
         GoRoute(
           path: '/entry/new',
           builder: (_, __) => const EntryEditorScreen(),
+        ),
+        GoRoute(
+          path: '/profile',
+          builder: (_, __) => const ProfileScreen(),
         ),
         GoRoute(
           path: '/settings',

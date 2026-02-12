@@ -237,6 +237,7 @@ async def get_preferences(user_id: str = Depends(get_current_user_id)):
         # Return defaults
         return UserPreferencesResponse(
             theme="auto",
+            color_theme="warm",
             accent_color="#6366F1",
             font_family="system",
             font_size=16,
@@ -251,6 +252,7 @@ async def get_preferences(user_id: str = Depends(get_current_user_id)):
         )
     return UserPreferencesResponse(
         theme=row.get("theme", "auto"),
+        color_theme=row.get("color_theme", "warm"),
         accent_color=row.get("accent_color", "#6366F1"),
         font_family=row.get("font_family", "system"),
         font_size=row.get("font_size", 16),

@@ -8,6 +8,7 @@ import 'package:ai_journal/presentation/screens/auth/signup_screen.dart';
 import 'package:ai_journal/presentation/screens/entries/entries_list_screen.dart';
 import 'package:ai_journal/presentation/screens/entry/entry_editor_screen.dart';
 import 'package:ai_journal/presentation/screens/home/home_screen.dart';
+import 'package:ai_journal/presentation/screens/main/main_shell.dart';
 import 'package:ai_journal/presentation/screens/profile/profile_screen.dart';
 import 'package:ai_journal/presentation/screens/settings/settings_screen.dart';
 
@@ -39,25 +40,42 @@ class AppRouter {
           path: '/signup',
           builder: (_, __) => const SignupScreen(),
         ),
-        GoRoute(
-          path: '/',
-          builder: (_, __) => const HomeScreen(),
+        StatefulShellRoute.indexedStack(
+          builder: (context, state, navigationShell) => MainShell(navigationShell: navigationShell),
+          branches: [
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: '/',
+                  builder: (_, __) => const HomeScreen(),
+                ),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: '/history',
+                  builder: (_, __) => const EntriesListScreen(),
+                ),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: '/profile',
+                  builder: (_, __) => const ProfileScreen(),
+                ),
+              ],
+            ),
+          ],
         ),
         GoRoute(
           path: '/entry/new',
           builder: (_, __) => const EntryEditorScreen(),
         ),
         GoRoute(
-          path: '/profile',
-          builder: (_, __) => const ProfileScreen(),
-        ),
-        GoRoute(
           path: '/settings',
           builder: (_, __) => const SettingsScreen(),
-        ),
-        GoRoute(
-          path: '/entries',
-          builder: (_, __) => const EntriesListScreen(),
         ),
       ],
     );

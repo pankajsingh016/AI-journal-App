@@ -13,6 +13,7 @@ class ApiConstants {
   static const String userStats = '/user/stats';
   static const String entries = '/entries';
   static String entryId(String id) => '/entries/$id';
+  static String entryMedia(String entryId) => '/entries/$entryId/media';
   static const String entriesDrafts = '/entries/drafts';
   static const String entriesFavorites = '/entries/favorites';
   static const String entriesCalendar = '/entries/calendar';

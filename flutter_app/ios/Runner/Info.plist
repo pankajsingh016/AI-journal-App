@@ -49,5 +49,9 @@
 	<string>Choose a profile photo from your gallery.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Take a photo for your profile picture.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Record voice notes to transcribe into your journal entry.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Transcribe your voice notes into text for your journal entry.</string>
 </dict>
 </plist>

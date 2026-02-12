@@ -42,8 +42,12 @@ class _SettingsScreenState extends State<SettingsScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
+        titleTextStyle: Theme.of(context).textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.3,
+        ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.pop(),
         ),
         bottom: TabBar(

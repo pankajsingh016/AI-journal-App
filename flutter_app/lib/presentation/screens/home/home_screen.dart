@@ -1,17 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import 'package:ai_journal/core/config/app_config.dart';
-import 'package:ai_journal/core/config/routes/app_router.dart';
-import 'package:ai_journal/data/models/entry_model.dart';
+import 'package:ai_journal/core/config/theme/theme_extension.dart';
 import 'package:ai_journal/presentation/providers/auth_provider.dart';
 import 'package:ai_journal/presentation/providers/entry_provider.dart';
-import 'package:ai_journal/presentation/screens/entries/entries_list_screen.dart';
 import 'package:ai_journal/presentation/screens/entry/entry_editor_screen.dart';
-import 'package:ai_journal/presentation/screens/profile/profile_screen.dart';
-import 'package:ai_journal/presentation/screens/settings/settings_screen.dart';
-import 'package:ai_journal/presentation/widgets/entry_card_actions.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -28,106 +24,136 @@ class _HomeScreenState extends State<HomeScreen> {
     return 'Good evening';
   }
 
+  late final ScrollController _calendarScrollController;
+
   @override
   void initState() {
     super.initState();
+    _calendarScrollController = ScrollController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ep = context.read<EntryProvider>();
-      ep.loadRecentEntries();
       ep.loadUserStats();
       ep.loadCalendarDates();
     });
   }
 
   @override
+  void dispose() {
+    _calendarScrollController.dispose();
+    super.dispose();
+  }
+
+  /// Finds the start date of the longest consecutive streak in [datesWithEntries].
+  static DateTime? _longestStreakStartDate(Set<String> datesWithEntries) {
+    if (datesWithEntries.isEmpty) return null;
+    final sorted = datesWithEntries.toList()..sort();
+    int bestLength = 1;
+    String bestStart = sorted.first;
+    int currentLength = 1;
+    String currentStart = sorted.first;
+    for (int i = 1; i < sorted.length; i++) {
+      final prevDate = DateTime.parse(sorted[i - 1]);
+      final currDate = DateTime.parse(sorted[i]);
+      if (currDate.difference(prevDate).inDays == 1) {
+        currentLength++;
+      } else {
+        if (currentLength > bestLength) {
+          bestLength = currentLength;
+          bestStart = currentStart;
+        }
+        currentLength = 1;
+        currentStart = sorted[i];
+      }
+    }
+    if (currentLength > bestLength) bestStart = currentStart;
+    return DateTime.parse(bestStart);
+  }
+
+  void _scrollCalendarToDate(DateTime target) {
+    if (!_calendarScrollController.hasClients) return;
+    final today = DateTime.now();
+    final start = today.subtract(const Duration(days: 60));
+    final startDate = DateTime(start.year, start.month, start.day);
+    final targetDate = DateTime(target.year, target.month, target.day);
+    final index = targetDate.difference(startDate).inDays;
+    final offset = (index * _calendarItemWidth).clamp(
+      0.0,
+      _calendarScrollController.position.maxScrollExtent,
+    );
+    _calendarScrollController.animateTo(
+      offset,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final entryProvider = context.watch<EntryProvider>();
-    final recentEntries = entryProvider.recentEntries;
-    final listError = entryProvider.error;
     final name = auth.user?.fullName ?? auth.user?.email.split('@').first ?? 'there';
+
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text(AppConfig.appName),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              rootNavigatorKey.currentState?.push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const SettingsScreen(),
-                ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.person_outline),
-            onPressed: () {
-              rootNavigatorKey.currentState?.push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const ProfileScreen(),
-                ),
-              );
-            },
-          ),
-        ],
+        titleTextStyle: theme.textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.3,
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          await entryProvider.loadRecentEntries();
           await entryProvider.loadUserStats();
           await entryProvider.loadCalendarDates();
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 '${_greeting()}, $name',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
+                ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 'Start your daily reflection',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
               ),
-              const SizedBox(height: 24),
-              Text(
-                'Journal calendar',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
+              const SizedBox(height: 28),
+              _SectionLabel(label: 'Journal calendar'),
               const SizedBox(height: 10),
               SizedBox(
                 height: 88,
-                child: JournalCalendarStrip(datesWithEntries: entryProvider.datesWithEntries),
-              ),
-              const SizedBox(height: 20),
-              Card(
-                child: ListTile(
-                  leading: const CircleAvatar(child: Icon(Icons.local_fire_department)),
-                  title: const Text('Your streaks'),
-                  subtitle: Text(
-                    'Streak till today: ${entryProvider.currentStreak} day${entryProvider.currentStreak == 1 ? '' : 's'}\nBest: ${entryProvider.longestStreak} day${entryProvider.longestStreak == 1 ? '' : 's'}${entryProvider.currentStreak == 0 && entryProvider.longestStreak == 0 ? ' – keep writing!' : ''}',
-                  ),
+                child: JournalCalendarStrip(
+                  datesWithEntries: entryProvider.datesWithEntries,
+                  scrollController: _calendarScrollController,
                 ),
               ),
-              const SizedBox(height: 16),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.edit_note, size: 40),
-                  title: const Text("Today's prompt"),
-                  subtitle: const Text('Tap to get an AI prompt and start writing.'),
-                  onTap: () async {
+              const SizedBox(height: 24),
+              _StreakWidget(
+                currentStreak: entryProvider.currentStreak,
+                longestStreak: entryProvider.longestStreak,
+                onSingleTap: () {
+                  final date = _longestStreakStartDate(entryProvider.datesWithEntries);
+                  if (date != null) _scrollCalendarToDate(date);
+                },
+                onDoubleTap: () => _scrollCalendarToDate(DateTime.now()),
+              ),
+              const SizedBox(height: 20),
+              _SectionLabel(label: "Today's focus"),
+              const SizedBox(height: 10),
+              _PromptCard(
+                onTap: () async {
                     final entryProvider = context.read<EntryProvider>();
                     String? prompt;
                     try {
@@ -139,70 +165,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         builder: (_) => EntryEditorScreen(initialPrompt: prompt),
                       ),
                     );
-                    if (mounted) context.read<EntryProvider>().loadRecentEntries();
-                  },
-                ),
+                    if (mounted) context.read<EntryProvider>()
+                          ..loadUserStats()
+                          ..loadCalendarDates();
+                },
               ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Recent entries',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const EntriesListScreen(),
-                        ),
-                      );
-                    },
-                    child: const Text('See all'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              if (listError != null && recentEntries.isEmpty)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          listError,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Theme.of(context).colorScheme.error),
-                        ),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: () => entryProvider.loadRecentEntries(),
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Retry'),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              else if (recentEntries.isEmpty)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      'No entries yet. Tap the button below to create your first entry.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                )
-              else
-                ...recentEntries.map(
-                  (e) => _RecentEntryTile(entry: e),
-                ),
             ],
           ),
         ),
@@ -214,7 +181,9 @@ class _HomeScreenState extends State<HomeScreen> {
               builder: (_) => const EntryEditorScreen(),
             ),
           );
-          if (mounted) context.read<EntryProvider>().loadRecentEntries();
+          if (mounted) context.read<EntryProvider>()
+                          ..loadUserStats()
+                          ..loadCalendarDates();
         },
         icon: const Icon(Icons.add),
         label: const Text('New entry'),
@@ -223,77 +192,240 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-String _entryTitle(EntryModel e) {
-  if (e.title != null && e.title!.trim().isNotEmpty) return e.title!;
-  final t = e.content.trim();
-  if (t.isEmpty) return 'Untitled';
-  final first = t.split('\n').first.trim();
-  return first.length > 40 ? '${first.substring(0, 40)}...' : first;
-}
-
-class _RecentEntryTile extends StatelessWidget {
-  const _RecentEntryTile({required this.entry});
-
-  final EntryModel entry;
+/// Small-caps style section label for hierarchy.
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.label});
+  final String label;
 
   @override
   Widget build(BuildContext context) {
-    final date = entry.updatedAt ?? entry.createdAt;
-    final dateStr = date != null
-        ? '${date.day}/${date.month}/${date.year}'
-        : entry.entryDate;
-    final preview = entry.content.length > 80
-        ? '${entry.content.trim().replaceAll('\n', ' ').substring(0, 80)}...'
-        : entry.content.trim().replaceAll('\n', ' ');
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        title: Text(
-          _entryTitle(entry),
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 2),
-            Text(
-              preview,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              dateStr,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
-            ),
-          ],
-        ),
-        isThreeLine: true,
-        trailing: EntryCardActions(
-          entry: entry,
-          isDraft: false,
-          onDeleted: () => context.read<EntryProvider>().loadRecentEntries(),
-        ),
-        onTap: () async {
-          await Navigator.of(context).push<void>(
-            MaterialPageRoute(
-              builder: (_) => EntryEditorScreen(entry: entry),
-            ),
-          );
-          if (context.mounted) {
-            context.read<EntryProvider>().loadRecentEntries();
-          }
-        },
+    return Text(
+      label.toUpperCase(),
+      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+        fontWeight: FontWeight.w600,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        letterSpacing: 0.8,
       ),
     );
+  }
+}
+
+/// Today's prompt CTA card — clear, actionable.
+class _PromptCard extends StatelessWidget {
+  const _PromptCard({required this.onTap});
+  final Future<void> Function() onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final appColors = AppThemeColors.of(context);
+    final iconColor = isDark ? colorScheme.primary : appColors.inspiration;
+    final iconBgColor = isDark ? colorScheme.primary.withValues(alpha: 0.2) : appColors.inspirationMuted;
+    return Material(
+      color: theme.cardTheme.color,
+      shape: theme.cardTheme.shape ?? RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => onTap(),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: iconBgColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.auto_awesome,
+                  size: 28,
+                  color: iconColor,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Today's prompt",
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Get an AI prompt and start writing.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios_rounded, size: 14, color: colorScheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Streak card: single tap scrolls calendar to longest streak, double tap to today.
+class _StreakWidget extends StatefulWidget {
+  const _StreakWidget({
+    required this.currentStreak,
+    required this.longestStreak,
+    this.onSingleTap,
+    this.onDoubleTap,
+  });
+
+  final int currentStreak;
+  final int longestStreak;
+  final VoidCallback? onSingleTap;
+  final VoidCallback? onDoubleTap;
+
+  @override
+  State<_StreakWidget> createState() => _StreakWidgetState();
+}
+
+class _StreakWidgetState extends State<_StreakWidget> {
+  Timer? _singleTapTimer;
+
+  @override
+  void dispose() {
+    _singleTapTimer?.cancel();
+    super.dispose();
+  }
+
+  void _handleTap() {
+    if (widget.onDoubleTap != null && widget.onSingleTap != null) {
+      _singleTapTimer?.cancel();
+      _singleTapTimer = Timer(const Duration(milliseconds: 250), () {
+        _singleTapTimer = null;
+        if (mounted) widget.onSingleTap?.call();
+      });
+    } else {
+      widget.onSingleTap?.call();
+    }
+  }
+
+  void _handleDoubleTap() {
+    _singleTapTimer?.cancel();
+    _singleTapTimer = null;
+    widget.onDoubleTap?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isZero = widget.currentStreak == 0 && widget.longestStreak == 0;
+
+    Widget content = Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isZero
+              ? colorScheme.outline.withValues(alpha: 0.4)
+              : AppThemeColors.of(context).success.withValues(alpha: 0.35),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: (isZero ? colorScheme.outline : AppThemeColors.of(context).success)
+                  .withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              isZero ? Icons.trending_up_rounded : Icons.local_fire_department_rounded,
+              size: 28,
+              color: isZero ? colorScheme.onSurfaceVariant : AppThemeColors.of(context).success,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Streak',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      '${widget.currentStreak}',
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        height: 1.0,
+                        letterSpacing: -0.5,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      widget.currentStreak == 1 ? 'day' : 'days',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                if (widget.longestStreak > 0) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Best: ${widget.longestStreak} days',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+                if (isZero)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Write today to start.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (widget.onSingleTap != null || widget.onDoubleTap != null) {
+      return GestureDetector(
+        onTap: widget.onSingleTap != null ? _handleTap : null,
+        onDoubleTap: widget.onDoubleTap != null ? _handleDoubleTap : null,
+        behavior: HitTestBehavior.opaque,
+        child: content,
+      );
+    }
+    return content;
   }
 }
 
@@ -303,16 +435,23 @@ const List<String> _dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const double _calendarItemWidth = 64;
 
 class JournalCalendarStrip extends StatefulWidget {
-  const JournalCalendarStrip({super.key, required this.datesWithEntries});
+  const JournalCalendarStrip({
+    super.key,
+    required this.datesWithEntries,
+    this.scrollController,
+  });
 
   final Set<String> datesWithEntries;
+  /// If provided, the parent can scroll the calendar (e.g. to longest streak or today).
+  final ScrollController? scrollController;
 
   @override
   State<JournalCalendarStrip> createState() => _JournalCalendarStripState();
 }
 
 class _JournalCalendarStripState extends State<JournalCalendarStrip> {
-  final ScrollController _scrollController = ScrollController();
+  late final ScrollController _scrollController;
+  bool _ownsController = false;
 
   static String _dateKey(DateTime d) {
     return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -321,6 +460,12 @@ class _JournalCalendarStripState extends State<JournalCalendarStrip> {
   @override
   void initState() {
     super.initState();
+    if (widget.scrollController != null) {
+      _scrollController = widget.scrollController!;
+    } else {
+      _scrollController = ScrollController();
+      _ownsController = true;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
       final today = DateTime.now();
@@ -333,7 +478,7 @@ class _JournalCalendarStripState extends State<JournalCalendarStrip> {
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    if (_ownsController) _scrollController.dispose();
     super.dispose();
   }
 
@@ -355,12 +500,13 @@ class _JournalCalendarStripState extends State<JournalCalendarStrip> {
         final dateKey = _dateKey(d);
         final hasEntry = widget.datesWithEntries.contains(dateKey);
         final isToday = d.year == today.year && d.month == today.month && d.day == today.day;
+        final colorScheme = Theme.of(context).colorScheme;
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Material(
             color: isToday
-                ? Theme.of(context).colorScheme.primaryContainer
-                : Theme.of(context).colorScheme.surfaceContainerHighest,
+                ? colorScheme.primary.withValues(alpha: 0.14)
+                : colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
@@ -373,10 +519,10 @@ class _JournalCalendarStripState extends State<JournalCalendarStrip> {
                     Text(
                       '${d.day}',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w700,
                             color: isToday
-                                ? Theme.of(context).colorScheme.onPrimaryContainer
-                                : Theme.of(context).colorScheme.onSurface,
+                                ? colorScheme.primary
+                                : colorScheme.onSurface,
                           ),
                     ),
                     const SizedBox(height: 2),
@@ -384,16 +530,19 @@ class _JournalCalendarStripState extends State<JournalCalendarStrip> {
                       _dayNames[d.weekday - 1],
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                             color: isToday
-                                ? Theme.of(context).colorScheme.onPrimaryContainer
-                                : Theme.of(context).colorScheme.onSurfaceVariant,
+                                ? colorScheme.primary.withValues(alpha: 0.9)
+                                : colorScheme.onSurfaceVariant,
                           ),
                     ),
                     if (hasEntry) ...[
                       const SizedBox(height: 4),
-                      Icon(
-                        Icons.local_fire_department,
-                        size: 20,
-                        color: Theme.of(context).colorScheme.error,
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: AppThemeColors.of(context).success,
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ],
                   ],

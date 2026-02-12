@@ -15,10 +15,12 @@ class PreferencesRepository {
 
   Future<Map<String, dynamic>> updatePreferences({
     String? theme,
+    String? colorTheme,
     bool? reminderEnabled,
   }) async {
     final body = <String, dynamic>{};
     if (theme != null) body['theme'] = theme;
+    if (colorTheme != null) body['color_theme'] = colorTheme;
     if (reminderEnabled != null) body['reminder_enabled'] = reminderEnabled;
     if (body.isEmpty) return getPreferences();
     final data = await _api.put(ApiConstants.userPreferences, body);

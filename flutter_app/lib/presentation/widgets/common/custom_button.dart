@@ -18,9 +18,19 @@ class CustomButton extends StatelessWidget {
       style: FilledButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
       ),
       child: loading
-          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+          ? SizedBox(
+              height: 22,
+              width: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Theme.of(context).colorScheme.onPrimary,
+              ),
+            )
           : Text(label),
     );
   }

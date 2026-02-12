@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import 'package:ai_journal/core/config/theme/app_colors.dart';
 import 'package:ai_journal/core/utils/validators.dart';
 import 'package:ai_journal/presentation/providers/auth_provider.dart';
 import 'package:ai_journal/presentation/widgets/common/custom_button.dart';
@@ -37,11 +36,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Scaffold(
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 28),
             child: Form(
               key: _formKey,
               child: Column(
@@ -50,39 +51,49 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   Text(
                     'Welcome back',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.5,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Sign in to continue to your journal',
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 36),
                   if (context.watch<AuthProvider>().error != null) ...[
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: AppColors.error.withOpacity(0.1),
+                        color: colorScheme.errorContainer,
                         borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: colorScheme.error.withValues(alpha: 0.4),
+                        ),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.error_outline, color: AppColors.error, size: 20),
-                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.error_outline_rounded,
+                            color: colorScheme.error,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               context.watch<AuthProvider>().error!,
-                              style: TextStyle(color: AppColors.error, fontSize: 14),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onErrorContainer,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                   ],
                   CustomTextField(
                     controller: _emailController,
@@ -110,23 +121,28 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: const Text('Forgot password?'),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 28),
                   Consumer<AuthProvider>(
                     builder: (_, auth, __) => CustomButton(
                       onPressed: auth.isLoading ? null : _submit,
                       label: auth.isLoading ? 'Signing in...' : 'Sign in',
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
                         "Don't have an account? ",
-                        style: Theme.of(context).textTheme.bodyMedium,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                       ),
                       TextButton(
                         onPressed: () => context.push('/signup'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: colorScheme.primary,
+                        ),
                         child: const Text('Sign up'),
                       ),
                     ],

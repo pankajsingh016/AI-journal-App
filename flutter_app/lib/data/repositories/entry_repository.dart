@@ -1,3 +1,5 @@
+import 'package:image_picker/image_picker.dart' show XFile;
+
 import 'package:ai_journal/core/constants/api_constants.dart';
 import 'package:ai_journal/data/data_sources/remote/api_client.dart';
 import 'package:ai_journal/data/models/entry_model.dart';
@@ -50,9 +52,9 @@ class EntryRepository {
     );
     final list = <EntryModel>[];
     for (final item in data) {
-      if (item is! Map<String, dynamic>) continue;
+      if (item is! Map) continue;
       try {
-        list.add(EntryModel.fromJson(item));
+        list.add(EntryModel.fromJson(Map<String, dynamic>.from(item as Map)));
       } catch (_) {
         // Skip malformed items so one bad entry doesn't break the list
       }
@@ -65,9 +67,9 @@ class EntryRepository {
     final data = await _api.getList(ApiConstants.entriesDrafts);
     final list = <EntryModel>[];
     for (final item in data) {
-      if (item is! Map<String, dynamic>) continue;
+      if (item is! Map) continue;
       try {
-        list.add(EntryModel.fromJson(item));
+        list.add(EntryModel.fromJson(Map<String, dynamic>.from(item as Map)));
       } catch (_) {}
     }
     return list;
@@ -122,5 +124,11 @@ class EntryRepository {
   Future<String> getInspirationPrompt() async {
     final data = await _api.post(ApiConstants.aiGeneratePrompt, {});
     return data['prompt'] as String? ?? 'What are you grateful for today?';
+  }
+
+  /// Upload a photo (or other image) for an entry. Entry must already exist.
+  Future<EntryMediaItem?> uploadEntryMedia(String entryId, XFile imageFile) async {
+    final data = await _api.postMultipartXFile(ApiConstants.entryMedia(entryId), imageFile);
+    return EntryMediaItem.fromJson(data);
   }
 }

@@ -1,3 +1,30 @@
+/// A single media item (image) attached to an entry.
+class EntryMediaItem {
+  const EntryMediaItem({
+    required this.id,
+    required this.url,
+    this.fileName,
+    this.mimeType,
+  });
+  final String id;
+  final String url;
+  final String? fileName;
+  final String? mimeType;
+
+  static EntryMediaItem? fromJson(dynamic json) {
+    if (json is! Map) return null;
+    final id = json['id']?.toString();
+    final url = json['url']?.toString();
+    if (id == null || url == null) return null;
+    return EntryMediaItem(
+      id: id,
+      url: url,
+      fileName: json['file_name']?.toString(),
+      mimeType: json['mime_type']?.toString(),
+    );
+  }
+}
+
 class EntryModel {
   const EntryModel({
     required this.id,
@@ -18,6 +45,7 @@ class EntryModel {
     this.createdAt,
     this.updatedAt,
     this.tags,
+    this.media,
   });
   final String id;
   final String userId;
@@ -37,6 +65,7 @@ class EntryModel {
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final List<String>? tags;
+  final List<EntryMediaItem>? media;
 
   factory EntryModel.fromJson(Map<String, dynamic> json) {
     String? _str(dynamic v) => v == null ? null : v.toString();
@@ -60,7 +89,19 @@ class EntryModel {
       createdAt: _parseDateTime(json['created_at']),
       updatedAt: _parseDateTime(json['updated_at']),
       tags: (json['tags'] is List) ? (json['tags'] as List).map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList() : null,
+      media: _parseMedia(json['media']),
     );
+  }
+
+  static List<EntryMediaItem>? _parseMedia(dynamic v) {
+    if (v is! List || v.isEmpty) return null;
+    final list = <EntryMediaItem>[];
+    for (final e in v) {
+      final map = e is Map ? Map<String, dynamic>.from(e as Map) : null;
+      final item = map != null ? EntryMediaItem.fromJson(map) : null;
+      if (item != null) list.add(item);
+    }
+    return list.isEmpty ? null : list;
   }
 
   static DateTime? _parseDateTime(dynamic v) {

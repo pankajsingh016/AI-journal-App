@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import 'package:ai_journal/core/config/app_config.dart';
 import 'package:ai_journal/core/config/routes/app_router.dart';
+import 'package:ai_journal/core/config/theme/theme_palette.dart';
 import 'package:ai_journal/data/models/user_model.dart';
 import 'package:ai_journal/presentation/providers/auth_provider.dart';
 import 'package:ai_journal/presentation/providers/preferences_provider.dart';
@@ -91,13 +92,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     }
 
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+        titleTextStyle: theme.textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.3,
         ),
+        leading: ModalRoute.of(context)?.canPop == true
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: () => context.pop(),
+              )
+            : null,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -112,9 +120,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 24),
             _SectionHeader(title: 'Preferences'),
             const SizedBox(height: 8),
-            _ThemeTile(
-              currentTheme: prefs.theme,
-              onThemeSelected: prefs.setTheme,
+            _ThemeTile(prefs: prefs),
+            SwitchListTile(
+              title: const Text('Dark mode'),
+              subtitle: const Text('Use dark theme'),
+              value: prefs.theme == 'dark' ||
+                  (prefs.theme == 'auto' &&
+                      MediaQuery.platformBrightnessOf(context) == Brightness.dark),
+              onChanged: (value) => prefs.setTheme(value ? 'dark' : 'light'),
             ),
             SwitchListTile(
               title: const Text('Daily reminder'),
@@ -367,59 +380,62 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
+/// Single Theme row: shows theme name, opens sheet to pick theme name + dark mode toggle.
 class _ThemeTile extends StatelessWidget {
-  const _ThemeTile({
-    required this.currentTheme,
-    required this.onThemeSelected,
-  });
+  const _ThemeTile({required this.prefs});
 
-  final String currentTheme;
-  final ValueChanged<String> onThemeSelected;
-
-  String _themeLabel(String theme) {
-    switch (theme) {
-      case 'light':
-        return 'Light';
-      case 'dark':
-        return 'Dark';
-      default:
-        return 'System';
-    }
-  }
+  final PreferencesProvider prefs;
 
   @override
   Widget build(BuildContext context) {
+    final palette = ThemePalette.byId(prefs.colorTheme) ?? ThemePalette.getDefault();
     return ListTile(
       leading: const Icon(Icons.palette_outlined),
       title: const Text('Theme'),
-      subtitle: Text(_themeLabel(currentTheme)),
+      subtitle: Text(palette.name),
       trailing: const Icon(Icons.chevron_right),
-      onTap: () {
-        showModalBottomSheet<String>(
-          context: context,
-          builder: (ctx) => SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  title: const Text('System'),
-                  onTap: () => Navigator.pop(ctx, 'auto'),
-                ),
-                ListTile(
-                  title: const Text('Light'),
-                  onTap: () => Navigator.pop(ctx, 'light'),
-                ),
-                ListTile(
-                  title: const Text('Dark'),
-                  onTap: () => Navigator.pop(ctx, 'dark'),
-                ),
-              ],
-            ),
-          ),
-        ).then((v) {
-          if (v != null) onThemeSelected(v);
-        });
-      },
+      onTap: () => _showThemeSheet(context),
+    );
+  }
+
+  void _showThemeSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Consumer<PreferencesProvider>(
+          builder: (_, prefs, __) {
+            final theme = Theme.of(ctx);
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
+                      'Theme name',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  ...ThemePalette.all.map(
+                    (palette) => ListTile(
+                      title: Text(palette.name),
+                      trailing: prefs.colorTheme == palette.id
+                          ? Icon(Icons.check_rounded, color: theme.colorScheme.primary)
+                          : null,
+                      onTap: () => prefs.setColorTheme(palette.id),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 }

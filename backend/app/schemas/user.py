@@ -28,6 +28,7 @@ class UserProfileUpdate(BaseModel):
 
 class UserPreferencesResponse(BaseModel):
     theme: str
+    color_theme: str  # warm | ocean | forest
     accent_color: str
     font_family: str
     font_size: int
@@ -43,6 +44,7 @@ class UserPreferencesResponse(BaseModel):
 
 class UserPreferencesUpdate(BaseModel):
     theme: str | None = None
+    color_theme: str | None = None
     accent_color: str | None = None
     font_family: str | None = None
     font_size: int | None = None

@@ -45,6 +45,13 @@ class EntryUpdate(BaseModel):
     tags: list[str] | None = None
 
 
+class EntryMediaItem(BaseModel):
+    id: str
+    url: str
+    file_name: str | None = None
+    mime_type: str | None = None
+
+
 class EntryResponse(BaseModel):
     id: str
     user_id: str
@@ -64,6 +71,7 @@ class EntryResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     tags: list[str] | None = None
+    media: list[EntryMediaItem] | None = None
 
     class Config:
         from_attributes = True

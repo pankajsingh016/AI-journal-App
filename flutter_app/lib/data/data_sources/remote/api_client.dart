@@ -168,6 +168,22 @@ class ApiClient {
     return _toMap(r.data);
   }
 
+  /// POST with multipart file from [XFile] (e.g. entry media upload).
+  Future<Map<String, dynamic>> postMultipartXFile(
+    String path,
+    XFile xFile, {
+    String fieldName = 'file',
+  }) async {
+    final bytes = await xFile.readAsBytes();
+    final name = xFile.name;
+    final filename = (name != null && name.contains('.')) ? name : 'image.jpg';
+    final formData = FormData.fromMap({
+      fieldName: MultipartFile.fromBytes(bytes, filename: filename),
+    });
+    final r = await _dio.post<dynamic>(path, data: formData);
+    return _toMap(r.data);
+  }
+
   /// PATCH with multipart from [XFile] (works on all platforms including web).
   Future<Map<String, dynamic>> patchMultipartXFile(
     String path,

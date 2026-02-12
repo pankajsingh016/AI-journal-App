@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 
 import 'package:ai_journal/core/errors/error_handler.dart';
 import 'package:ai_journal/data/models/entry_model.dart';
@@ -66,6 +67,32 @@ class EntryProvider with ChangeNotifier {
       return null;
     } finally {
       _setLoading(false);
+    }
+  }
+
+  /// Fetch a single entry by id (includes media). Returns null on error.
+  Future<EntryModel?> getEntry(String entryId) async {
+    _error = null;
+    try {
+      final entry = await _repo.getEntry(entryId);
+      return entry;
+    } catch (e) {
+      _error = ErrorHandler.getMessage(e);
+      return null;
+    }
+  }
+
+  /// Upload a photo for an entry. Entry must already exist. Returns the media item or null on error.
+  Future<EntryMediaItem?> uploadEntryMedia(String entryId, XFile imageFile) async {
+    _error = null;
+    try {
+      final item = await _repo.uploadEntryMedia(entryId, imageFile);
+      notifyListeners();
+      return item;
+    } catch (e) {
+      _error = ErrorHandler.getMessage(e);
+      notifyListeners();
+      return null;
     }
   }
 

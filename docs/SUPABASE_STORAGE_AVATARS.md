@@ -81,3 +81,16 @@ If you still see “Avatar storage is not set up”, double-check:
 | 6 | Test profile photo upload in the app |
 
 Once the **avatars** bucket exists and is public, profile picture upload will work with your current backend and app.
+
+---
+
+## Journal entry photos (optional)
+
+To allow **adding photos to journal entries** (Add photos in the entry editor):
+
+1. In **Storage**, click **New bucket** again.
+2. **Name:** `journal-media`
+3. **Public bucket:** ON (so entry images load in the app).
+4. Create the bucket.
+
+If this bucket is missing, the app will show an error when uploading entry photos; create it using the steps above.

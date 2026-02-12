@@ -1,18 +1,43 @@
 """Journal entries CRUD and list."""
+import uuid
 from datetime import date, time
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
-from fastapi import HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 
 from app.core.deps import get_current_user_id
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import AppException, ErrorCode, NotFoundError, ValidationError
 from app.db.supabase import get_supabase
-from app.schemas.entry import EntryCreate, EntryUpdate, EntryResponse, MOOD_VALUES
+from app.schemas.entry import (
+    EntryCreate,
+    EntryUpdate,
+    EntryResponse,
+    EntryMediaItem,
+    MOOD_VALUES,
+)
 
 from app.api.v1.user import _ensure_user_row
+from app.config import get_settings
 
 router = APIRouter()
+
+
+def _storage_public_url(bucket_name: str, path: str) -> str:
+    """Build the public URL for a storage object. Path is used as-is (no encoding) so UUIDs and filenames work."""
+    base = get_settings().supabase_url.rstrip("/")
+    path = (path or "").strip().lstrip("/")
+    return f"{base}/storage/v1/object/public/{bucket_name}/{path}"
+
+
+def _storage_upload_supabase(supabase, bucket_name: str, path: str, content: bytes, content_type: str = "image/jpeg") -> None:
+    """Upload bytes using Supabase storage client (same pattern as avatar upload). All file_options values are strings."""
+    file_options = {
+        "content-type": content_type,
+        "contentType": content_type,
+        "upsert": "true",
+    }
+    bucket = supabase.storage.from_(bucket_name)
+    bucket.upload(path, content, file_options=file_options)
 
 
 def _ensure_mood(mood: str | None) -> None:
@@ -30,7 +55,6 @@ async def list_entries(
     user_id: str = Depends(get_current_user_id),
 ):
     supabase = get_supabase()
-    # Use select("*") only so list always works; tags loaded only for get_entry
     q = supabase.table("journal_entries").select("*").eq("user_id", user_id).is_("deleted_at", "null")
     if is_draft is not None:
         q = q.eq("is_draft", is_draft)
@@ -39,15 +63,35 @@ async def list_entries(
     q = q.order("entry_date", desc=(sort == "desc")).order("entry_time", desc=(sort == "desc"))
     q = q.range((page - 1) * limit, page * limit - 1)
     r = q.execute()
+    rows = r.data or []
+    entry_ids = [str(row.get("id")) for row in rows if row.get("id")]
+    media_by_entry: dict[str, list[EntryMediaItem]] = {}
+    if entry_ids:
+        media_r = supabase.table("entry_media").select("entry_id, id, storage_path, storage_bucket, file_name, mime_type").in_("entry_id", entry_ids).order("created_at").execute()
+        for m in (media_r.data or []):
+            eid = str(m.get("entry_id", ""))
+            if eid not in media_by_entry:
+                media_by_entry[eid] = []
+            path = m.get("storage_path")
+            bucket = m.get("storage_bucket") or "journal-media"
+            if path:
+                url = _storage_public_url(bucket, path)
+                media_by_entry[eid].append(EntryMediaItem(
+                    id=str(m.get("id", "")),
+                    url=url,
+                    file_name=m.get("file_name"),
+                    mime_type=m.get("mime_type"),
+                ))
     out = []
-    for row in (r.data or []):
-        out.append(_row_to_response(row, tags=None))
+    for row in rows:
+        eid = str(row.get("id", ""))
+        media = media_by_entry.get(eid) or None
+        out.append(_row_to_response(row, tags=None, media=media))
     return out
 
 
-def _row_to_response(row: dict, tags: list[str] | None = None) -> EntryResponse:
+def _row_to_response(row: dict, tags: list[str] | None = None, media: list[EntryMediaItem] | None = None) -> EntryResponse:
     row = dict(row)
-    # Normalise types for JSON (Supabase may return UUID/datetime objects)
     def _str(v):
         return str(v) if v is not None else None
     if row.get("entry_time") is not None:
@@ -73,6 +117,7 @@ def _row_to_response(row: dict, tags: list[str] | None = None) -> EntryResponse:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         tags=tags if tags is not None else [],
+        media=media,
     )
 
 
@@ -137,6 +182,24 @@ async def entry_dates(user_id: str = Depends(get_current_user_id)):
     return {"dates": sorted(dates)}
 
 
+def _get_entry_media(supabase, entry_id: str) -> list[EntryMediaItem]:
+    r = supabase.table("entry_media").select("id, storage_path, storage_bucket, file_name, mime_type").eq("entry_id", entry_id).order("created_at").execute()
+    out = []
+    bucket_name = "journal-media"
+    for m in (r.data or []):
+        path = m.get("storage_path")
+        bucket = m.get("storage_bucket") or bucket_name
+        if path:
+            url = _storage_public_url(bucket, path)
+            out.append(EntryMediaItem(
+                id=str(m.get("id", "")),
+                url=url,
+                file_name=m.get("file_name"),
+                mime_type=m.get("mime_type"),
+            ))
+    return out
+
+
 @router.get("/{entry_id}", response_model=EntryResponse)
 async def get_entry(entry_id: UUID, user_id: str = Depends(get_current_user_id)):
     supabase = get_supabase()
@@ -145,69 +208,69 @@ async def get_entry(entry_id: UUID, user_id: str = Depends(get_current_user_id))
         raise NotFoundError("Entry not found")
     row = r.data[0]
     tags = [t["tag"] for t in row.get("entry_tags", [])] if isinstance(row.get("entry_tags"), list) else []
-    return _row_to_response(row, tags)
+    media = _get_entry_media(supabase, str(entry_id))
+    return _row_to_response(row, tags, media)
 
 
 @router.post("", response_model=EntryResponse, status_code=status.HTTP_201_CREATED)
 async def create_entry(body: EntryCreate, user_id: str = Depends(get_current_user_id)):
-    _ensure_mood(body.mood)
-    # Ensure user row exists in public.users (journal_entries.user_id FK references it)
-    _ensure_user_row(user_id)
-    supabase = get_supabase()
-    entry_date = body.entry_date or date.today()
-    entry_time = body.entry_time or time(0, 0, 0)
-    # Ensure time is HH:MM:SS for Postgres TIME column
-    time_str = str(entry_time)
-    if len(time_str) > 8:
-        time_str = time_str[:8]
-    word_count = len(body.content.split())
-    payload = {
-        "user_id": user_id,
-        "content": body.content,
-        "entry_date": str(entry_date),
-        "entry_time": time_str,
-        "word_count": word_count,
-        "character_count": len(body.content),
-        "is_draft": body.is_draft,
-        "is_favorite": body.is_favorite,
-    }
-    if body.title is not None:
-        payload["title"] = body.title
-    if body.mood is not None:
-        payload["mood"] = body.mood
-    if body.mood_intensity is not None:
-        payload["mood_intensity"] = body.mood_intensity
-    if body.weather is not None:
-        payload["weather"] = body.weather
-    if body.location is not None:
-        payload["location"] = body.location
-    if body.location_lat is not None:
-        payload["location_lat"] = body.location_lat
-    if body.location_lng is not None:
-        payload["location_lng"] = body.location_lng
-    if body.template_id is not None:
-        payload["template_id"] = str(body.template_id)
     try:
+        _ensure_mood(body.mood)
+        _ensure_user_row(user_id)
+        supabase = get_supabase()
+        entry_date = body.entry_date or date.today()
+        entry_time = body.entry_time or time(0, 0, 0)
+        time_str = str(entry_time)
+        if len(time_str) > 8:
+            time_str = time_str[:8]
+        word_count = len(body.content.split())
+        payload = {
+            "user_id": user_id,
+            "content": body.content,
+            "entry_date": str(entry_date),
+            "entry_time": time_str,
+            "word_count": word_count,
+            "character_count": len(body.content),
+            "is_draft": body.is_draft,
+            "is_favorite": body.is_favorite,
+        }
+        if body.title is not None:
+            payload["title"] = body.title
+        if body.mood is not None:
+            payload["mood"] = body.mood
+        if body.mood_intensity is not None:
+            payload["mood_intensity"] = body.mood_intensity
+        if body.weather is not None:
+            payload["weather"] = body.weather
+        if body.location is not None:
+            payload["location"] = body.location
+        if body.location_lat is not None:
+            payload["location_lat"] = body.location_lat
+        if body.location_lng is not None:
+            payload["location_lng"] = body.location_lng
+        if body.template_id is not None:
+            payload["template_id"] = str(body.template_id)
         r = supabase.table("journal_entries").insert(payload).execute()
+        if not r.data or len(r.data) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Entry was created but server could not return it. Please refresh your entries.",
+            )
+        row = r.data[0]
+        if body.tags:
+            for tag in body.tags:
+                try:
+                    supabase.table("entry_tags").insert({"entry_id": row["id"], "tag": tag}).execute()
+                except Exception:
+                    pass
+        return _row_to_response(row, body.tags or [])
+    except (NotFoundError, ValidationError, AppException, HTTPException):
+        raise
     except Exception as e:
-        err_msg = str(e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error while creating entry: {err_msg}",
-        )
-    if not r.data or len(r.data) == 0:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Entry was created but server could not return it. Please refresh your entries.",
-        )
-    row = r.data[0]
-    if body.tags:
-        for tag in body.tags:
-            try:
-                supabase.table("entry_tags").insert({"entry_id": row["id"], "tag": tag}).execute()
-            except Exception:
-                pass  # non-fatal if tag insert fails
-    return _row_to_response(row, body.tags or [])
+            detail=f"Failed to create entry: {e!s}",
+        ) from e
 
 
 @router.put("/{entry_id}", response_model=EntryResponse)
@@ -261,3 +324,86 @@ async def remove_favorite(entry_id: UUID, user_id: str = Depends(get_current_use
     supabase = get_supabase()
     supabase.table("journal_entries").update({"is_favorite": False}).eq("id", str(entry_id)).eq("user_id", user_id).execute()
     return await get_entry(entry_id, user_id)
+
+
+def _entry_media_error(e: Exception) -> AppException:
+    """Turn storage/DB errors into a clear message for the client."""
+    err_msg = str(e).lower()
+    if "bucket" in err_msg and ("not found" in err_msg or "does not exist" in err_msg):
+        return AppException(
+            ErrorCode.SERVICE_UNAVAILABLE,
+            "Journal media storage is not set up. Create a storage bucket named 'journal-media' in Supabase (Storage → New bucket, set to public).",
+        )
+    if "entry_media" in err_msg or "relation" in err_msg or "does not exist" in err_msg:
+        return AppException(
+            ErrorCode.DATABASE_ERROR,
+            "Database table entry_media is missing. Run the full supabase/schema.sql in Supabase SQL Editor. See docs/SUPABASE_SETUP.md.",
+        )
+    if "encode" in err_msg:
+        return AppException(
+            ErrorCode.SERVICE_UNAVAILABLE,
+            "Photo upload failed due to a server configuration error. Please try again or use a different image.",
+        )
+    if "row-level security" in err_msg or "policy" in err_msg or "permission" in err_msg or "forbidden" in err_msg:
+        return AppException(
+            ErrorCode.SERVICE_UNAVAILABLE,
+            "Storage permission denied. In Supabase, ensure the journal-media bucket exists and allows uploads (e.g. public bucket or RLS policy for service role).",
+        )
+    # Surface the real error so we can fix bucket/RLS/config issues
+    return AppException(
+        ErrorCode.SERVICE_UNAVAILABLE,
+        f"Photo upload failed. {e!s}",
+    )
+
+
+@router.post("/{entry_id}/media", response_model=EntryMediaItem, status_code=status.HTTP_201_CREATED)
+async def upload_entry_media(
+    entry_id: UUID,
+    file: UploadFile | None = None,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Upload an image (or other media) for a journal entry. Entry must exist and belong to the user."""
+    if not file or not file.filename:
+        raise ValidationError("No file provided", field="file")
+    try:
+        supabase = get_supabase()
+        r = supabase.table("journal_entries").select("id").eq("id", str(entry_id)).eq("user_id", user_id).is_("deleted_at", "null").execute()
+        if not r.data or len(r.data) == 0:
+            raise NotFoundError("Entry not found")
+        content = await file.read()
+        ext = "jpg"
+        if file.filename and "." in file.filename:
+            ext = file.filename.rsplit(".", 1)[-1].lower() or "jpg"
+        if ext not in ("jpg", "jpeg", "png", "gif", "webp"):
+            ext = "jpg"
+        path = f"{entry_id}/{uuid.uuid4()}.{ext}"
+        bucket_name = "journal-media"
+        content_type = file.content_type or "image/jpeg"
+        _storage_upload_supabase(supabase, bucket_name, path, content, content_type)
+        url = _storage_public_url(bucket_name, path)
+        media_type = file.content_type or "image/jpeg"
+        # Use .execute() only; insert() returns inserted row by default (representation). Chaining .select() can return a builder and cause "SyncQueryRequest Builder Object" errors.
+        ins = supabase.table("entry_media").insert({
+            "entry_id": str(entry_id),
+            "media_type": media_type,
+            "storage_path": path,
+            "storage_bucket": bucket_name,
+            "file_name": file.filename,
+            "mime_type": media_type,
+        }).execute()
+        if not ins.data or len(ins.data) == 0:
+            raise AppException(
+                ErrorCode.DATABASE_ERROR,
+                "Media record could not be created. Ensure the entry_media table exists. Run supabase/schema.sql. See docs/SUPABASE_SETUP.md.",
+            )
+        row = ins.data[0]
+        return EntryMediaItem(
+            id=str(row.get("id", "")),
+            url=url,
+            file_name=file.filename,
+            mime_type=media_type,
+        )
+    except (NotFoundError, ValidationError, AppException):
+        raise
+    except Exception as e:
+        raise _entry_media_error(e)

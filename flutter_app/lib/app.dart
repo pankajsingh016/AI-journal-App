@@ -44,11 +44,13 @@ class _AppRouterScopeState extends State<_AppRouterScope> {
   @override
   Widget build(BuildContext context) {
     if (_router == null) return const SizedBox.shrink();
-    final themeMode = context.watch<PreferencesProvider>().themeMode;
+    final prefs = context.watch<PreferencesProvider>();
+    final themeMode = prefs.themeMode;
+    final colorThemeId = prefs.colorTheme;
     return MaterialApp.router(
       title: 'AI Journal',
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
+      theme: AppTheme.light(colorThemeId),
+      darkTheme: AppTheme.dark(colorThemeId),
       themeMode: themeMode,
       routerConfig: _router,
     );

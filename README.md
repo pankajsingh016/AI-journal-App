@@ -7,6 +7,17 @@ Production-ready AI journaling application (Reflection-style). **Python FastAPI*
 - **`backend/`** – FastAPI app (auth, entries, AI, search, analytics)
 - **`supabase/schema.sql`** – PostgreSQL schema and RLS (run in Supabase SQL Editor)
 - **`flutter_app/`** – Flutter app (scaffold and core features)
+- **`docs/`** – Full codebase documentation (see below)
+
+## Understanding the codebase
+
+To understand the whole codebase in one go, start with the docs in **`docs/`**:
+
+1. **[docs/READING_GUIDE.md](docs/READING_GUIDE.md)** – Index and suggested reading order (start here).
+2. **[docs/CODEBASE_OVERVIEW.md](docs/CODEBASE_OVERVIEW.md)** – High-level map: stack, layout, backend↔app, main flows.
+3. **[docs/BACKEND_ARCHITECTURE.md](docs/BACKEND_ARCHITECTURE.md)** – FastAPI structure, routes, auth, DB, errors.
+4. **[docs/FLUTTER_ARCHITECTURE.md](docs/FLUTTER_ARCHITECTURE.md)** – App structure, routing, providers, data layer, screens.
+5. **[docs/KEY_FLOWS.md](docs/KEY_FLOWS.md)** – End-to-end: login, create entry, upload photo, voice, inspiration, history.
 
 ## Backend (FastAPI)
 

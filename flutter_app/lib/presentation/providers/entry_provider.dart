@@ -14,6 +14,7 @@ class EntryProvider with ChangeNotifier {
   List<EntryModel> _drafts = [];
   List<EntryModel> _recentEntries = [];
   List<EntryModel> _allEntries = [];
+  List<EntryModel> _entriesForDate = [];
   int _currentStreak = 0;
   int _longestStreak = 0;
   Set<String> _datesWithEntries = {};
@@ -23,6 +24,7 @@ class EntryProvider with ChangeNotifier {
   List<EntryModel> get drafts => List.unmodifiable(_drafts);
   List<EntryModel> get recentEntries => List.unmodifiable(_recentEntries);
   List<EntryModel> get allEntries => List.unmodifiable(_allEntries);
+  List<EntryModel> get entriesForDate => List.unmodifiable(_entriesForDate);
   int get currentStreak => _currentStreak;
   int get longestStreak => _longestStreak;
   Set<String> get datesWithEntries => Set.unmodifiable(_datesWithEntries);
@@ -158,6 +160,28 @@ class EntryProvider with ChangeNotifier {
     } catch (e) {
       _error = ErrorHandler.getMessage(e);
       _allEntries = [];
+      notifyListeners();
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  /// Load published entries for a single day (YYYY-MM-DD). Used by calendar date tap.
+  Future<void> loadEntriesForDate(String dateKey) async {
+    _setLoading(true);
+    _error = null;
+    try {
+      _entriesForDate = await _repo.listEntries(
+        page: 1,
+        limit: 50,
+        sort: 'desc',
+        isDraft: false,
+        entryDate: dateKey,
+      );
+      notifyListeners();
+    } catch (e) {
+      _error = ErrorHandler.getMessage(e);
+      _entriesForDate = [];
       notifyListeners();
     } finally {
       _setLoading(false);

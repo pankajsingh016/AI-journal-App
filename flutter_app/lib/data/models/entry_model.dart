@@ -67,6 +67,13 @@ class EntryModel {
   final List<String>? tags;
   final List<EntryMediaItem>? media;
 
+  static bool _toBool(dynamic v, bool defaultValue) {
+    if (v == null) return defaultValue;
+    if (v is bool) return v;
+    if (v.toString().toLowerCase() == 'true') return true;
+    return defaultValue;
+  }
+
   factory EntryModel.fromJson(Map<String, dynamic> json) {
     String? _str(dynamic v) => v == null ? null : v.toString();
     String _strReq(dynamic v) => v?.toString() ?? '';
@@ -81,8 +88,8 @@ class EntryModel {
       entryTime: _str(json['entry_time']) ?? '00:00:00',
       wordCount: (json['word_count'] is int) ? json['word_count'] as int : (int.tryParse(json['word_count']?.toString() ?? '') ?? 0),
       characterCount: (json['character_count'] is int) ? json['character_count'] as int : (int.tryParse(json['character_count']?.toString() ?? '') ?? 0),
-      isDraft: json['is_draft'] == true,
-      isFavorite: json['is_favorite'] == true,
+      isDraft: _toBool(json['is_draft'], false),
+      isFavorite: _toBool(json['is_favorite'], false),
       weather: json['weather'] is Map ? Map<String, dynamic>.from(json['weather'] as Map) : null,
       location: _str(json['location']),
       templateId: _str(json['template_id']),

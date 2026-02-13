@@ -19,10 +19,16 @@ from app.api.v1 import router as api_v1_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if get_settings().sentry_dsn:
+    settings = get_settings()
+    if settings.sentry_dsn:
         import sentry_sdk
         from sentry_sdk.integrations.fastapi import FastApiIntegration
-        sentry_sdk.init(dsn=get_settings().sentry_dsn, integrations=[FastApiIntegration()])
+        sentry_sdk.init(dsn=settings.sentry_dsn, integrations=[FastApiIntegration()])
+    if "placeholder" in (settings.supabase_url or "").lower():
+        import logging
+        logging.getLogger("uvicorn.error").warning(
+            "SUPABASE_URL is not set or is placeholder. Set it in backend .env to your Supabase project URL so journal images load."
+        )
     yield
 
 
@@ -102,12 +108,20 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     """Catch-all so the client gets a proper JSON error instead of a traceback."""
+    import traceback
+    hint = f"{type(exc).__name__}: {exc}"
+    tb = traceback.format_exc()
+    if get_settings().debug:
+        hint = f"{hint}\n{tb[:500]}"
+    # Log so server logs show the real error
+    import logging
+    logging.getLogger("uvicorn.error").error("Unhandled exception: %s\n%s", exc, tb)
     return JSONResponse(
         status_code=500,
         content=APIErrorResponse(error=ErrorBody(
             code=ErrorCode.INTERNAL_SERVER_ERROR,
             message="An unexpected error occurred. Please try again.",
-            details={"hint": str(exc)},
+            details={"hint": hint},
         )).model_dump(),
     )
 

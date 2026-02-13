@@ -34,11 +34,13 @@ class EntryRepository {
   }
 
   /// List entries (published by default, latest first).
+  /// If [entryDate] is set (YYYY-MM-DD), returns only entries written on that day.
   Future<List<EntryModel>> listEntries({
     int page = 1,
     int limit = 20,
     String sort = 'desc',
     bool? isDraft,
+    String? entryDate,
   }) async {
     final query = <String, dynamic>{
       'page': page,
@@ -46,6 +48,7 @@ class EntryRepository {
       'sort': sort,
     };
     if (isDraft != null) query['is_draft'] = isDraft;
+    if (entryDate != null && entryDate.isNotEmpty) query['entry_date'] = entryDate;
     final data = await _api.getList(
       ApiConstants.entries,
       queryParameters: query.map((k, v) => MapEntry(k, v.toString())),
@@ -62,9 +65,17 @@ class EntryRepository {
     return list;
   }
 
-  /// List draft entries.
+  /// List draft entries. Uses same list endpoint as History with is_draft=true for reliability.
   Future<List<EntryModel>> getDrafts() async {
-    final data = await _api.getList(ApiConstants.entriesDrafts);
+    final data = await _api.getList(
+      ApiConstants.entries,
+      queryParameters: const {
+        'is_draft': 'true',
+        'page': '1',
+        'limit': '50',
+        'sort': 'desc',
+      },
+    );
     final list = <EntryModel>[];
     for (final item in data) {
       if (item is! Map) continue;

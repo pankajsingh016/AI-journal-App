@@ -8,8 +8,8 @@ import 'package:ai_journal/core/config/routes/app_router.dart';
 import 'package:ai_journal/core/config/theme/theme_palette.dart';
 import 'package:ai_journal/data/models/user_model.dart';
 import 'package:ai_journal/presentation/providers/auth_provider.dart';
+import 'package:ai_journal/presentation/providers/entry_provider.dart';
 import 'package:ai_journal/presentation/providers/preferences_provider.dart';
-import 'package:ai_journal/presentation/screens/settings/settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -20,6 +20,14 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _isUploadingAvatar = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<EntryProvider>().loadDrafts();
+    });
+  }
 
   Future<void> _pickAndUploadAvatar(ImageSource source) async {
     final picker = ImagePicker();
@@ -77,6 +85,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
+  }
+
+  static String _draftsSubtitle(BuildContext context) {
+    final p = context.watch<EntryProvider>();
+    if (p.isLoading && p.drafts.isEmpty) return 'Loading…';
+    if (p.error != null && p.drafts.isEmpty) return 'Tap to open';
+    if (p.drafts.isEmpty) return 'No drafts yet';
+    return '${p.drafts.length} draft${p.drafts.length == 1 ? '' : 's'}';
   }
 
   @override
@@ -137,16 +153,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 8),
             ListTile(
-              title: const Text('Settings & drafts'),
-              subtitle: const Text('Drafts, notifications, and more'),
+              leading: Icon(Icons.edit_note_outlined, color: Theme.of(context).colorScheme.primary),
+              title: const Text('Drafts'),
+              subtitle: Text(
+                _draftsSubtitle(context),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                rootNavigatorKey.currentState?.push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const SettingsScreen(),
-                  ),
-                );
-              },
+              onTap: () => context.push('/drafts'),
             ),
             const SizedBox(height: 32),
             OutlinedButton.icon(

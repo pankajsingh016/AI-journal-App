@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+
+import 'package:ai_journal/core/config/app_config.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
@@ -78,6 +80,26 @@ class _EntryEditorScreenState extends State<EntryEditorScreen> {
   }
 
   Future<void> _addPhotos() async {
+    // Request photo permission so gallery picker works (Android 13+ READ_MEDIA_IMAGES, iOS photo library)
+    final status = await Permission.photos.request();
+    if (!status.isGranted && !status.isLimited) {
+      if (!mounted) return;
+      final openSettings = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Photo access'),
+          content: const Text(
+            'Allow access to photos to add images to your entry. You can enable it in Settings.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open Settings')),
+          ],
+        ),
+      );
+      if (openSettings == true) openAppSettings();
+      return;
+    }
     final picker = ImagePicker();
     final picked = await picker.pickMultiImage(
       imageQuality: 85,
@@ -558,7 +580,7 @@ class _MediaThumbnail extends StatelessWidget {
               height: 300,
               child: url != null
                   ? Image.network(
-                      url!,
+                      AppConfig.rewriteMediaUrl(url!),
                       fit: BoxFit.cover,
                       loadingBuilder: (_, child, loadingProgress) {
                         if (loadingProgress == null) return child;

@@ -5,15 +5,15 @@ import 'package:provider/provider.dart';
 import 'package:ai_journal/presentation/providers/auth_provider.dart';
 import 'package:ai_journal/presentation/screens/auth/login_screen.dart';
 import 'package:ai_journal/presentation/screens/auth/signup_screen.dart';
+import 'package:ai_journal/presentation/screens/entries/entries_for_date_screen.dart';
 import 'package:ai_journal/presentation/screens/entries/entries_list_screen.dart';
+import 'package:ai_journal/presentation/screens/drafts/drafts_screen.dart';
 import 'package:ai_journal/presentation/screens/entry/entry_editor_screen.dart';
 import 'package:ai_journal/presentation/screens/home/home_screen.dart';
 import 'package:ai_journal/presentation/screens/main/main_shell.dart';
 import 'package:ai_journal/presentation/screens/profile/profile_screen.dart';
-import 'package:ai_journal/presentation/screens/settings/settings_screen.dart';
 
-/// Global key for the root navigator (used by GoRouter). Use this to push
-/// routes that must appear on top of the current screen (e.g. Settings).
+/// Global key for the root navigator (used by GoRouter).
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 
 class AppRouter {
@@ -71,11 +71,21 @@ class AppRouter {
         ),
         GoRoute(
           path: '/entry/new',
-          builder: (_, __) => const EntryEditorScreen(),
+          builder: (context, state) {
+            final initialPrompt = state.extra as String?;
+            return EntryEditorScreen(initialPrompt: initialPrompt);
+          },
         ),
         GoRoute(
-          path: '/settings',
-          builder: (_, __) => const SettingsScreen(),
+          path: '/entries/date/:dateKey',
+          builder: (_, state) {
+            final dateKey = state.pathParameters['dateKey'] ?? '';
+            return EntriesForDateScreen(dateKey: dateKey);
+          },
+        ),
+        GoRoute(
+          path: '/drafts',
+          builder: (_, __) => const DraftsScreen(),
         ),
       ],
     );

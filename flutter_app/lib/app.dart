@@ -45,6 +45,8 @@ class _AppRouterScopeState extends State<_AppRouterScope> {
   Widget build(BuildContext context) {
     if (_router == null) return const SizedBox.shrink();
     final prefs = context.watch<PreferencesProvider>();
+    // Wait for local theme cache so we never paint with wrong theme (hot reload or cold start).
+    if (!prefs.hasLoadedLocalCache) return const SizedBox.shrink();
     final themeMode = prefs.themeMode;
     final colorThemeId = prefs.colorTheme;
     return MaterialApp.router(

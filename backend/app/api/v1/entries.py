@@ -1,6 +1,7 @@
 """Journal entries CRUD and list."""
 import uuid
-from datetime import date, time
+from datetime import date, datetime, time
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
@@ -23,10 +24,13 @@ router = APIRouter()
 
 
 def _storage_public_url(bucket_name: str, path: str) -> str:
-    """Build the public URL for a storage object. Path is used as-is (no encoding) so UUIDs and filenames work."""
+    """Build the public URL for a storage object. Path is URL-encoded (slashes preserved)."""
     base = get_settings().supabase_url.rstrip("/")
-    path = (path or "").strip().lstrip("/")
-    return f"{base}/storage/v1/object/public/{bucket_name}/{path}"
+    raw = (path or "").strip().lstrip("/")
+    if not raw:
+        return f"{base}/storage/v1/object/public/{bucket_name}/"
+    encoded = quote(raw, safe="/")
+    return f"{base}/storage/v1/object/public/{bucket_name}/{encoded}"
 
 
 def _storage_upload_supabase(supabase, bucket_name: str, path: str, content: bytes, content_type: str = "image/jpeg") -> None:
@@ -52,6 +56,7 @@ async def list_entries(
     sort: str = Query("desc"),  # desc | asc
     is_draft: bool | None = None,
     is_favorite: bool | None = None,
+    entry_date: str | None = Query(None, description="Filter by date YYYY-MM-DD; returns all entries written on that day"),
     user_id: str = Depends(get_current_user_id),
 ):
     supabase = get_supabase()
@@ -60,6 +65,8 @@ async def list_entries(
         q = q.eq("is_draft", is_draft)
     if is_favorite is not None:
         q = q.eq("is_favorite", is_favorite)
+    if entry_date is not None and entry_date.strip():
+        q = q.eq("entry_date", entry_date.strip())
     q = q.order("entry_date", desc=(sort == "desc")).order("entry_time", desc=(sort == "desc"))
     q = q.range((page - 1) * limit, page * limit - 1)
     r = q.execute()
@@ -90,6 +97,62 @@ async def list_entries(
     return out
 
 
+def _parse_datetime(v) -> datetime:
+    """Normalize DB value (string or datetime) to datetime for EntryResponse."""
+    if v is None:
+        return datetime.now()
+    if isinstance(v, datetime):
+        return v
+    s = str(v).strip()
+    if not s:
+        return datetime.now()
+    # Supabase/PostgREST returns ISO strings e.g. 2025-02-12T10:30:00.123456+00:00
+    for fmt, size in (("%Y-%m-%dT%H:%M:%S", 19), ("%Y-%m-%d %H:%M:%S", 19), ("%Y-%m-%d", 10)):
+        try:
+            return datetime.strptime(s[:size], fmt)
+        except ValueError:
+            continue
+    return datetime.now()
+
+
+def _safe_int(v, default: int = 0) -> int:
+    if v is None:
+        return default
+    if isinstance(v, int):
+        return v
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int_optional(v) -> int | None:
+    """For mood_intensity: int | None."""
+    if v is None:
+        return None
+    if isinstance(v, int):
+        return v
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_weather(v):
+    """Return dict or None for EntryResponse.weather."""
+    if v is None:
+        return None
+    if isinstance(v, dict):
+        return v
+    if isinstance(v, str) and v.strip():
+        try:
+            import json
+            return json.loads(v)
+        except Exception:
+            return None
+    return None
+
+
 def _row_to_response(row: dict, tags: list[str] | None = None, media: list[EntryMediaItem] | None = None) -> EntryResponse:
     row = dict(row)
     def _str(v):
@@ -104,18 +167,18 @@ def _row_to_response(row: dict, tags: list[str] | None = None, media: list[Entry
         title=row.get("title") if isinstance(row.get("title"), (str, type(None))) else _str(row.get("title")),
         content=row.get("content") or "",
         mood=row.get("mood"),
-        mood_intensity=row.get("mood_intensity"),
+        mood_intensity=_safe_int_optional(row.get("mood_intensity")),
         entry_date=row.get("entry_date") or "",
         entry_time=row.get("entry_time") or "00:00:00",
-        word_count=row.get("word_count") or 0,
-        character_count=row.get("character_count") or 0,
+        word_count=_safe_int(row.get("word_count")),
+        character_count=_safe_int(row.get("character_count")),
         is_draft=bool(row.get("is_draft", False)),
         is_favorite=bool(row.get("is_favorite", False)),
-        weather=row.get("weather"),
-        location=row.get("location"),
+        weather=_safe_weather(row.get("weather")),
+        location=row.get("location") if isinstance(row.get("location"), (str, type(None))) else _str(row.get("location")),
         template_id=_str(row.get("template_id")) if row.get("template_id") is not None else None,
-        created_at=row["created_at"],
-        updated_at=row["updated_at"],
+        created_at=_parse_datetime(row.get("created_at")),
+        updated_at=_parse_datetime(row.get("updated_at")),
         tags=tags if tags is not None else [],
         media=media,
     )
@@ -123,7 +186,16 @@ def _row_to_response(row: dict, tags: list[str] | None = None, media: list[Entry
 
 @router.get("/drafts", response_model=list[EntryResponse])
 async def list_drafts(user_id: str = Depends(get_current_user_id)):
-    return await list_entries(page=1, limit=50, is_draft=True, user_id=user_id)
+    try:
+        return await list_entries(page=1, limit=50, is_draft=True, user_id=user_id)
+    except (NotFoundError, ValidationError, AppException):
+        raise
+    except Exception as e:
+        raise AppException(
+            ErrorCode.DATABASE_ERROR,
+            "Failed to load drafts. Please try again.",
+            details={"hint": str(e)},
+        ) from e
 
 
 @router.get("/favorites", response_model=list[EntryResponse])
@@ -347,12 +419,14 @@ def _entry_media_error(e: Exception) -> AppException:
     if "row-level security" in err_msg or "policy" in err_msg or "permission" in err_msg or "forbidden" in err_msg:
         return AppException(
             ErrorCode.SERVICE_UNAVAILABLE,
-            "Storage permission denied. In Supabase, ensure the journal-media bucket exists and allows uploads (e.g. public bucket or RLS policy for service role).",
+            "Storage permission denied. In Supabase: create bucket 'journal-media' (Storage → New bucket, Public ON) and run the policy SQL in docs/SUPABASE_STORAGE_JOURNAL_MEDIA.md.",
+            details={"hint": str(e)},
         )
     # Surface the real error so we can fix bucket/RLS/config issues
     return AppException(
         ErrorCode.SERVICE_UNAVAILABLE,
         f"Photo upload failed. {e!s}",
+        details={"hint": str(e)},
     )
 
 

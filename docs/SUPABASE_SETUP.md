@@ -126,7 +126,8 @@ See **[SUPABASE_STORAGE_AVATARS.md](SUPABASE_STORAGE_AVATARS.md)** for more deta
 3. **Public bucket**: ON (so entry images load in the app).
 4. Create.
 
-If this bucket is missing, the app will show an error when uploading entry photos.
+If this bucket is missing, the app will show an error when uploading entry photos.  
+If you see **"Storage permission denied"**, follow **[SUPABASE_STORAGE_JOURNAL_MEDIA.md](SUPABASE_STORAGE_JOURNAL_MEDIA.md)** to create the bucket and add the Storage policy.
 
 ---
 

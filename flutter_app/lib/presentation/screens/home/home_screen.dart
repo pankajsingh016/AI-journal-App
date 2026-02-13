@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import 'package:ai_journal/core/config/app_config.dart';
 import 'package:ai_journal/core/config/theme/theme_extension.dart';
 import 'package:ai_journal/presentation/providers/auth_provider.dart';
 import 'package:ai_journal/presentation/providers/entry_provider.dart';
-import 'package:ai_journal/presentation/screens/entry/entry_editor_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -123,8 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(height: 6),
-              Text(
-                'Start your daily reflection',
+              _TypingSubtitle(
                 style: theme.textTheme.bodyLarge?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
@@ -137,6 +136,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: JournalCalendarStrip(
                   datesWithEntries: entryProvider.datesWithEntries,
                   scrollController: _calendarScrollController,
+                  onDateSelected: (date) {
+                    final key = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+                    context.push('/entries/date/$key');
+                  },
                 ),
               ),
               const SizedBox(height: 24),
@@ -160,11 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       prompt = await entryProvider.getInspirationPrompt();
                     } catch (_) {}
                     if (!mounted) return;
-                    await Navigator.of(context).push<void>(
-                      MaterialPageRoute(
-                        builder: (_) => EntryEditorScreen(initialPrompt: prompt),
-                      ),
-                    );
+                    await context.push('/entry/new', extra: prompt);
                     if (mounted) context.read<EntryProvider>()
                           ..loadUserStats()
                           ..loadCalendarDates();
@@ -176,11 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
-          await Navigator.of(context).push<void>(
-            MaterialPageRoute(
-              builder: (_) => const EntryEditorScreen(),
-            ),
-          );
+          await context.push('/entry/new');
           if (mounted) context.read<EntryProvider>()
                           ..loadUserStats()
                           ..loadCalendarDates();
@@ -188,6 +183,131 @@ class _HomeScreenState extends State<HomeScreen> {
         icon: const Icon(Icons.add),
         label: const Text('New entry'),
       ),
+    );
+  }
+}
+
+/// Quotes that cycle: type → pause → backspace erase → pause → type next.
+const List<String> _subtitleQuotes = [
+  'Take a Moment for Yourself Today',
+  'Speak Your Mind. Clear Your Heart.',
+  'Write What Matters Today',
+  'Start Your Moment of Clarity',
+];
+
+enum _TypingPhase { typing, pauseAfterType, erasing, pauseAfterErase }
+
+/// Subtitle that types each quote, then backspace-erases it, then types the next; loops.
+class _TypingSubtitle extends StatefulWidget {
+  const _TypingSubtitle({this.style});
+
+  final TextStyle? style;
+
+  @override
+  State<_TypingSubtitle> createState() => _TypingSubtitleState();
+}
+
+class _TypingSubtitleState extends State<_TypingSubtitle>
+    with SingleTickerProviderStateMixin {
+  int _phraseIndex = 0;
+  int _visibleLength = 0;
+  _TypingPhase _phase = _TypingPhase.typing;
+  DateTime? _pauseUntil;
+  Timer? _timer;
+  late AnimationController _cursorController;
+  late Animation<double> _cursorBlink;
+
+  String get _currentPhrase => _subtitleQuotes[_phraseIndex];
+
+  @override
+  void initState() {
+    super.initState();
+    _cursorController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 530),
+    )..repeat(reverse: true);
+    _cursorBlink = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _cursorController, curve: Curves.easeInOut),
+    );
+    _timer = Timer.periodic(const Duration(milliseconds: 40), _tick);
+  }
+
+  void _tick(Timer timer) {
+    if (!mounted) return;
+    final now = DateTime.now();
+    if (_pauseUntil != null) {
+      if (now.isBefore(_pauseUntil!)) return;
+      _pauseUntil = null;
+      if (_phase == _TypingPhase.pauseAfterType) {
+        setState(() => _phase = _TypingPhase.erasing);
+      } else {
+        setState(() {
+          _phraseIndex = (_phraseIndex + 1) % _subtitleQuotes.length;
+          _phase = _TypingPhase.typing;
+        });
+      }
+      return;
+    }
+    switch (_phase) {
+      case _TypingPhase.typing:
+        if (_visibleLength >= _currentPhrase.length) {
+          setState(() {
+            _phase = _TypingPhase.pauseAfterType;
+            _pauseUntil = now.add(const Duration(milliseconds: 2200));
+          });
+        } else {
+          setState(() => _visibleLength++);
+        }
+        break;
+      case _TypingPhase.pauseAfterType:
+        break;
+      case _TypingPhase.erasing:
+        if (_visibleLength <= 0) {
+          setState(() {
+            _phase = _TypingPhase.pauseAfterErase;
+            _pauseUntil = now.add(const Duration(milliseconds: 600));
+          });
+        } else {
+          setState(() => _visibleLength--);
+        }
+        break;
+      case _TypingPhase.pauseAfterErase:
+        break;
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _cursorController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = widget.style ?? Theme.of(context).textTheme.bodyLarge;
+    final visible = _currentPhrase.substring(0, _visibleLength);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Text(visible, style: style),
+        AnimatedBuilder(
+          animation: _cursorBlink,
+          builder: (context, child) => Opacity(
+            opacity: _cursorBlink.value,
+            child: Container(
+              width: 2,
+              height: (style?.fontSize ?? 18) * (style?.height ?? 1.2),
+              margin: const EdgeInsets.only(left: 1),
+              decoration: BoxDecoration(
+                color: style?.color ?? Theme.of(context).colorScheme.onSurfaceVariant,
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -439,11 +559,14 @@ class JournalCalendarStrip extends StatefulWidget {
     super.key,
     required this.datesWithEntries,
     this.scrollController,
+    this.onDateSelected,
   });
 
   final Set<String> datesWithEntries;
   /// If provided, the parent can scroll the calendar (e.g. to longest streak or today).
   final ScrollController? scrollController;
+  /// Called when a date is tapped; opens the "entries for this day" screen.
+  final void Function(DateTime date)? onDateSelected;
 
   @override
   State<JournalCalendarStrip> createState() => _JournalCalendarStripState();
@@ -510,7 +633,7 @@ class _JournalCalendarStripState extends State<JournalCalendarStrip> {
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
-              onTap: () {},
+              onTap: () => widget.onDateSelected?.call(d),
               child: SizedBox(
                 width: 56,
                 child: Column(

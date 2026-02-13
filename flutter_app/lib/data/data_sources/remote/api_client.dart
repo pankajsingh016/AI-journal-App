@@ -97,10 +97,17 @@ class ApiClient {
       final err = data['error'] as Map;
       final msg = err['message'];
       if (msg is String && msg.isNotEmpty) {
+        final details = err['details'];
+        final hint = details is Map ? (details as Map)['hint']?.toString() : null;
+        final hintStr = hint != null && hint.isNotEmpty ? hint : null;
         const generic = 'An unexpected error occurred. Please try again.';
-        if (msg == generic && err['details'] is Map) {
-          final hint = (err['details'] as Map)['hint'];
-          if (hint is String && hint.isNotEmpty) return hint;
+        // Always show backend hint when message is generic (so user sees real error)
+        if (msg == generic && hintStr != null) {
+          return hintStr.length > 280 ? '${hintStr.substring(0, 280)}…' : hintStr;
+        }
+        if (hintStr != null) {
+          final short = hintStr.length > 120 ? '${hintStr.substring(0, 120)}…' : hintStr;
+          return '$msg ($short)';
         }
         return msg;
       }

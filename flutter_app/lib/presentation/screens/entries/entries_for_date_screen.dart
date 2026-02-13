@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import 'package:ai_journal/core/config/app_config.dart';
@@ -8,47 +8,55 @@ import 'package:ai_journal/presentation/providers/entry_provider.dart';
 import 'package:ai_journal/presentation/screens/entry/entry_editor_screen.dart';
 import 'package:ai_journal/presentation/widgets/entry_card_actions.dart';
 
-/// All published entries, latest first.
-class EntriesListScreen extends StatefulWidget {
-  const EntriesListScreen({super.key});
+/// Shows all journal entries written on a specific day.
+/// [dateKey] must be YYYY-MM-DD (e.g. from calendar tap).
+class EntriesForDateScreen extends StatefulWidget {
+  const EntriesForDateScreen({super.key, required this.dateKey});
+
+  final String dateKey;
 
   @override
-  State<EntriesListScreen> createState() => _EntriesListScreenState();
+  State<EntriesForDateScreen> createState() => _EntriesForDateScreenState();
 }
 
-class _EntriesListScreenState extends State<EntriesListScreen> {
+class _EntriesForDateScreenState extends State<EntriesForDateScreen> {
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<EntryProvider>().loadAllEntries();
+      context.read<EntryProvider>().loadEntriesForDate(widget.dateKey);
     });
+  }
+
+  /// Format YYYY-MM-DD for display (e.g. "Feb 12, 2025").
+  static String _formatDateTitle(String dateKey) {
+    final parsed = DateTime.tryParse(dateKey);
+    if (parsed == null) return dateKey;
+    return DateFormat.yMMMd().format(parsed);
   }
 
   @override
   Widget build(BuildContext context) {
     final entryProvider = context.watch<EntryProvider>();
-    final entries = entryProvider.allEntries;
+    final entries = entryProvider.entriesForDate;
     final isLoading = entryProvider.isLoading;
     final error = entryProvider.error;
-
     final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('History'),
+        title: Text(_formatDateTitle(widget.dateKey)),
         titleTextStyle: theme.textTheme.titleLarge?.copyWith(
           fontWeight: FontWeight.w600,
           letterSpacing: -0.3,
         ),
-        leading: ModalRoute.of(context)?.canPop == true
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_rounded),
-                onPressed: () => context.pop(),
-              )
-            : null,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       body: RefreshIndicator(
-        onRefresh: () => entryProvider.loadAllEntries(),
+        onRefresh: () => entryProvider.loadEntriesForDate(widget.dateKey),
         child: _buildBody(context, entries, isLoading, error, entryProvider),
       ),
     );
@@ -86,7 +94,7 @@ class _EntriesListScreenState extends State<EntriesListScreen> {
               ),
               const SizedBox(height: 20),
               FilledButton.icon(
-                onPressed: () => entryProvider.loadAllEntries(),
+                onPressed: () => entryProvider.loadEntriesForDate(widget.dateKey),
                 icon: const Icon(Icons.refresh_rounded, size: 20),
                 label: const Text('Retry'),
                 style: FilledButton.styleFrom(
@@ -115,14 +123,14 @@ class _EntriesListScreenState extends State<EntriesListScreen> {
               ),
               const SizedBox(height: 20),
               Text(
-                'No entries yet',
+                'No entries on this day',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
-                'Published entries will appear here.',
+                'Journals written on this date will appear here.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -138,7 +146,11 @@ class _EntriesListScreenState extends State<EntriesListScreen> {
       itemCount: entries.length,
       itemBuilder: (context, index) {
         final entry = entries[index];
-        return _EntryListTile(entry: entry);
+        return _EntryListTile(
+          entry: entry,
+          onDeleted: () => entryProvider.loadEntriesForDate(widget.dateKey),
+          onTapThenRefresh: () => entryProvider.loadEntriesForDate(widget.dateKey),
+        );
       },
     );
   }
@@ -152,12 +164,16 @@ String _entryTitle(EntryModel e) {
   return first.length > 40 ? '${first.substring(0, 40)}...' : first;
 }
 
-String _mediaUrl(String url) => AppConfig.rewriteMediaUrl(url);
-
 class _EntryListTile extends StatelessWidget {
-  const _EntryListTile({required this.entry});
+  const _EntryListTile({
+    required this.entry,
+    required this.onDeleted,
+    required this.onTapThenRefresh,
+  });
 
   final EntryModel entry;
+  final VoidCallback onDeleted;
+  final VoidCallback onTapThenRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -169,7 +185,7 @@ class _EntryListTile extends StatelessWidget {
         ? '${entry.content.trim().replaceAll('\n', ' ').substring(0, 100)}...'
         : entry.content.trim().replaceAll('\n', ' ');
     final firstMediaUrl = entry.media != null && entry.media!.isNotEmpty
-        ? _mediaUrl(entry.media!.first.url)
+        ? AppConfig.rewriteMediaUrl(entry.media!.first.url)
         : null;
 
     final theme = Theme.of(context);
@@ -216,8 +232,8 @@ class _EntryListTile extends StatelessWidget {
         title: Text(
           _entryTitle(entry),
           style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+            fontWeight: FontWeight.w600,
+          ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
@@ -246,7 +262,7 @@ class _EntryListTile extends StatelessWidget {
         trailing: EntryCardActions(
           entry: entry,
           isDraft: false,
-          onDeleted: () => context.read<EntryProvider>().loadAllEntries(),
+          onDeleted: onDeleted,
         ),
         onTap: () async {
           await Navigator.of(context).push<void>(
@@ -254,9 +270,7 @@ class _EntryListTile extends StatelessWidget {
               builder: (_) => EntryEditorScreen(entry: entry),
             ),
           );
-          if (context.mounted) {
-            context.read<EntryProvider>().loadAllEntries();
-          }
+          if (context.mounted) onTapThenRefresh();
         },
       ),
     );

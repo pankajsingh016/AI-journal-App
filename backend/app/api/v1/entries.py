@@ -1,10 +1,13 @@
 """Journal entries CRUD and list."""
+import logging
 import uuid
 from datetime import date, datetime, time
 from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+
+logger = logging.getLogger(__name__)
 
 from app.core.deps import get_current_user_id
 from app.core.errors import AppException, ErrorCode, NotFoundError, ValidationError
@@ -439,6 +442,12 @@ async def upload_entry_media(
     """Upload an image (or other media) for a journal entry. Entry must exist and belong to the user."""
     if not file or not file.filename:
         raise ValidationError("No file provided", field="file")
+    settings = get_settings()
+    if not settings.supabase_service_key or "placeholder" in (settings.supabase_service_key or "").lower():
+        raise AppException(
+            ErrorCode.SERVICE_UNAVAILABLE,
+            "Storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_KEY in backend .env (use the service_role key from Supabase Dashboard → Project Settings → API).",
+        )
     try:
         supabase = get_supabase()
         r = supabase.table("journal_entries").select("id").eq("id", str(entry_id)).eq("user_id", user_id).is_("deleted_at", "null").execute()
@@ -480,4 +489,5 @@ async def upload_entry_media(
     except (NotFoundError, ValidationError, AppException):
         raise
     except Exception as e:
+        logger.warning("Journal media upload failed: %s", e, exc_info=True)
         raise _entry_media_error(e)

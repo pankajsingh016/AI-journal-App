@@ -1,30 +1,56 @@
 # Journal Media Storage (entry photos)
 
-If you see **"Storage permission denied"** when adding photos to a journal entry, do the following in Supabase.
+If you see **"Storage permission denied"** or **"Photo upload failed"** when adding photos to a journal entry, follow these steps in order.
 
 ---
 
-## 1. Create the bucket
+## 1. Backend .env – use the **service_role** key
+
+The backend **must** use the **service_role** key for storage uploads, not the anon key.
+
+1. In Supabase: **Project Settings** (gear) → **API**.
+2. Under **Project API keys**, copy the **`service_role`** key (secret). Do **not** use the `anon` public key.
+3. In your **backend** `.env`:
+
+   ```env
+   SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+   SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...   # the service_role secret
+   ```
+
+4. Restart the backend after changing `.env`.
+
+If `SUPABASE_SERVICE_KEY` is missing or still a placeholder, uploads will fail with a clear “Storage is not configured” message.
+
+---
+
+## 2. Create the bucket in Supabase
 
 1. In the Supabase dashboard, go to **Storage** (left sidebar).
 2. Click **New bucket**.
-3. **Name:** `journal-media` (exactly).
-4. **Public bucket:** turn **ON** (so images load in the app).
+3. **Name:** `journal-media` (exactly; lowercase, hyphen).
+4. **Public bucket:** turn **ON** (so image URLs load in the app).
 5. Click **Create bucket**.
+
+The bucket **id** in Storage will be `journal-media`. If you already have a bucket with a different name (e.g. `journal_media`), either create a new one named `journal-media` or the backend would need to be changed to use that name.
 
 ---
 
-## 2. Allow uploads (Storage policy)
+## 3. Storage policies (RLS on `storage.objects`)
 
-The backend uploads with the **service role** key, which usually bypasses Storage RLS. If you still get permission errors, add a policy that allows uploads to this bucket.
-
-In **SQL Editor**, run:
+Even when using the service role, some projects require policies. In **SQL Editor**, run:
 
 ```sql
--- Allow uploads to journal-media bucket (for backend service role / any authenticated user)
+-- Allow uploads to journal-media bucket (all roles including service_role)
 CREATE POLICY "Allow uploads to journal-media"
 ON storage.objects
 FOR INSERT
+WITH CHECK (bucket_id = 'journal-media');
+
+-- Allow overwrite (upsert) – needed for retries
+CREATE POLICY "Allow update journal-media"
+ON storage.objects
+FOR UPDATE
+USING (bucket_id = 'journal-media')
 WITH CHECK (bucket_id = 'journal-media');
 
 -- Allow public read (so image URLs work in the app)
@@ -34,21 +60,29 @@ FOR SELECT
 USING (bucket_id = 'journal-media');
 ```
 
-If you get "policy already exists", the policies are already there; skip or drop the existing one first.
+If you get **"policy already exists"**, the policies are already there; you can skip or drop the existing one first, e.g.:
+
+```sql
+DROP POLICY IF EXISTS "Allow uploads to journal-media" ON storage.objects;
+-- then run the CREATE again
+```
 
 ---
 
-## 3. Check backend .env
+## 4. Verify
 
-Ensure your **backend** `.env` has:
+1. **Backend:** Restart the API. Check server logs; on upload failure you should see a line like:  
+   `Journal media upload failed: <exact Supabase error>`.
+2. **App:** Create or edit an entry → **Add photos** → pick an image → Save or Publish. The photo should upload and appear.
 
-- `SUPABASE_URL` = your project URL (e.g. `https://xxxxx.supabase.co`)
-- `SUPABASE_SERVICE_KEY` = your **service_role** key (not the anon key)
+If it still fails, check:
 
-Restart the backend after any change.
+- Backend logs for the exact error after **"Journal media upload failed:"**.
+- API response body: the `details.hint` field often contains the raw Supabase error.
+- Supabase **Storage** → **Policies** for the `storage.objects` table: ensure the three policies above exist and reference `bucket_id = 'journal-media'`.
 
 ---
 
-## 4. Test
+## 5. Optional: Flutter image URLs
 
-In the app, create or edit an entry, tap **Add photos**, pick an image, then Save or Publish. The photo should upload and appear in the entry.
+For images to load in the app, the backend builds URLs using `SUPABASE_URL`. Optionally set the same URL in `flutter_app/assets/.env` as `SUPABASE_URL` so the app can rewrite storage URLs if needed. See `docs/JOURNAL_IMAGES_SETUP.md`.

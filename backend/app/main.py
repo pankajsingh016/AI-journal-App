@@ -24,10 +24,15 @@ async def lifespan(app: FastAPI):
         import sentry_sdk
         from sentry_sdk.integrations.fastapi import FastApiIntegration
         sentry_sdk.init(dsn=settings.sentry_dsn, integrations=[FastApiIntegration()])
+    import logging
+    log = logging.getLogger("uvicorn.error")
     if "placeholder" in (settings.supabase_url or "").lower():
-        import logging
-        logging.getLogger("uvicorn.error").warning(
+        log.warning(
             "SUPABASE_URL is not set or is placeholder. Set it in backend .env to your Supabase project URL so journal images load."
+        )
+    if not settings.supabase_service_key or "placeholder" in (settings.supabase_service_key or "").lower():
+        log.warning(
+            "SUPABASE_SERVICE_KEY is not set or is placeholder. Set it in backend .env to the service_role key (Supabase Dashboard → API) so journal photo uploads work. See docs/SUPABASE_STORAGE_JOURNAL_MEDIA.md."
         )
     yield
 

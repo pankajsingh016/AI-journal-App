@@ -238,6 +238,19 @@ class EntryProvider with ChangeNotifier {
     }
   }
 
+  /// Run an AI inspiration action on text. Returns result or null on error.
+  Future<String?> runInspiration({required String text, required String action}) async {
+    _error = null;
+    try {
+      final result = await _repo.runInspiration(text: text, action: action);
+      return result;
+    } catch (e) {
+      _error = ErrorHandler.getMessage(e);
+      notifyListeners();
+      return null;
+    }
+  }
+
   void clearError() {
     _error = null;
     notifyListeners();

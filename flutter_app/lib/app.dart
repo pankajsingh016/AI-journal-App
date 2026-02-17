@@ -7,6 +7,7 @@ import 'package:ai_journal/core/config/routes/app_router.dart';
 import 'package:ai_journal/presentation/providers/auth_provider.dart';
 import 'package:ai_journal/presentation/providers/entry_provider.dart';
 import 'package:ai_journal/presentation/providers/preferences_provider.dart';
+import 'package:ai_journal/presentation/providers/template_provider.dart';
 
 /// Caches [GoRouter] so it is created once. Recreating it on every build broke navigation (e.g. settings icon).
 class App extends StatelessWidget {
@@ -18,6 +19,7 @@ class App extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()..init()),
         ChangeNotifierProvider(create: (_) => EntryProvider()..init()),
+        ChangeNotifierProvider(create: (_) => TemplateProvider()..init()),
         ChangeNotifierProvider(create: (_) => PreferencesProvider()..init()),
       ],
       child: const _AppRouterScope(),

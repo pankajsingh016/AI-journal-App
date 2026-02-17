@@ -342,6 +342,18 @@ async def create_entry(body: EntryCreate, user_id: str = Depends(get_current_use
     except (NotFoundError, ValidationError, AppException, HTTPException):
         raise
     except Exception as e:
+        err_str = str(e).lower()
+        # PostgreSQL 42501 = insufficient_privilege — usually backend using anon key instead of service_role
+        if "42501" in str(e) or "permission denied" in err_str or "insufficient_privilege" in err_str:
+            logger.warning("Create entry 42501/permission denied: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "Database permission denied (42501). The backend must use the Supabase service_role key, not the anon key. "
+                    "Set SUPABASE_SERVICE_KEY in your backend .env to the service_role secret from Supabase Dashboard → Project Settings → API. "
+                    "See docs/SUPABASE_SETUP.md."
+                ),
+            ) from e
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create entry: {e!s}",

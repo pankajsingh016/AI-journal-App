@@ -19,9 +19,13 @@ class ApiConstants {
   static const String entriesCalendar = '/entries/calendar';
   static const String entriesDates = '/entries/dates';
   static const String entriesOnThisDay = '/entries/on-this-day';
+  static const String templates = '/templates';
+  static String templateId(String id) => '/templates/$id';
+  static const String templatesCategories = '/templates/categories';
   static const String search = '/search';
   static const String aiGeneratePrompt = '/ai/generate-prompt';
   static const String aiImproveText = '/ai/improve-text';
+  static const String aiInspiration = '/ai/inspiration';
   static const String aiChat = '/ai/chat';
   static const String aiConversationHistory = '/ai/conversation-history';
   static const String analyticsDashboard = '/analytics/dashboard';

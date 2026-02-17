@@ -9,7 +9,9 @@ import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import 'package:ai_journal/data/models/entry_model.dart';
+import 'package:ai_journal/data/models/template_model.dart';
 import 'package:ai_journal/presentation/providers/entry_provider.dart';
+import 'package:ai_journal/presentation/screens/entry/template_picker_dialog.dart';
 
 /// New or edit journal entry: writing pad + bottom bar.
 /// When [entry] is non-null, shows existing content and updates on save.
@@ -61,21 +63,96 @@ class _EntryEditorScreenState extends State<EntryEditorScreen> {
   }
 
   Future<void> _askInspiration() async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => _InspirationActionSheet(
+        hasContent: _contentController.text.trim().isNotEmpty,
+      ),
+    );
+    if (!mounted || action == null) return;
     final entryProvider = context.read<EntryProvider>();
-    final prompt = await entryProvider.getInspirationPrompt();
+    if (action == 'prompt') {
+      String? prompt = await entryProvider.getInspirationPrompt();
+      if (!mounted) return;
+      final usedFallback = (prompt == null || prompt.isEmpty);
+      if (usedFallback) prompt = _fallbackWritingPrompts.first;
+      if (prompt != null && prompt.isNotEmpty) {
+        final before = _contentController.text;
+        final insert = before.isEmpty ? prompt : '\n\n$prompt';
+        _contentController.text = before + insert;
+        _contentController.selection = TextSelection.collapsed(offset: _contentController.text.length);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(usedFallback
+                  ? 'Couldn\'t reach AI right now — here\'s a prompt to try'
+                  : 'Inspiration added to your entry'),
+            ),
+          );
+        }
+      } else if (entryProvider.error != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(entryProvider.error!), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
+    // improve, grammar, expand, soften, title, questions
+    final text = _contentController.text.trim();
+    if (text.isEmpty && !['title', 'questions'].contains(action)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Write something first, then use AI inspiration')),
+      );
+      return;
+    }
+    final result = await entryProvider.runInspiration(text: text, action: action);
     if (!mounted) return;
-    if (prompt != null && prompt.isNotEmpty) {
-      final before = _contentController.text;
-      final insert = before.isEmpty ? prompt : '\n\n$prompt';
-      _contentController.text = before + insert;
-      _contentController.selection = TextSelection.collapsed(offset: _contentController.text.length);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Inspiration added to your entry')),
-      );
-    } else if (entryProvider.error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(entryProvider.error!), backgroundColor: Colors.red),
-      );
+    if (result == null || result.isEmpty) {
+      if (entryProvider.error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(entryProvider.error!), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
+    setState(() {
+      switch (action) {
+        case 'title':
+          _titleController.text = result.trim();
+          break;
+        case 'questions':
+          final before = _contentController.text;
+          final insert = before.isEmpty ? result.trim() : '\n\n${result.trim()}';
+          _contentController.text = before + insert;
+          _contentController.selection = TextSelection.collapsed(offset: _contentController.text.length);
+          break;
+        default:
+          _contentController.text = result.trim();
+          _contentController.selection = TextSelection.collapsed(offset: _contentController.text.length);
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_inspirationSuccessMessage(action))),
+    );
+  }
+
+  static const List<String> _fallbackWritingPrompts = [
+    'What is one thing you\'re grateful for today?',
+    'What was a small win or good moment today?',
+    'How are you feeling right now, in one sentence?',
+    'What would make tomorrow a little better?',
+    'Who or what made you smile recently?',
+  ];
+
+  static String _inspirationSuccessMessage(String action) {
+    switch (action) {
+      case 'improve': return 'Wording improved';
+      case 'grammar': return 'Grammar corrected';
+      case 'expand': return 'Text expanded';
+      case 'soften': return 'Tone softened';
+      case 'title': return 'Title suggested';
+      case 'questions': return 'Reflection questions added';
+      default: return 'Done';
     }
   }
 
@@ -248,11 +325,25 @@ class _EntryEditorScreenState extends State<EntryEditorScreen> {
     setState(() => _pendingImages.removeAt(index));
   }
 
-  void _useTemplates() {
-    // TODO: open template picker
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Templates – coming soon')),
+  Future<void> _useTemplates() async {
+    final template = await showDialog<TemplateModel>(
+      context: context,
+      builder: (_) => const TemplatePickerDialog(),
     );
+    if (!mounted || template == null) return;
+    // Apply template structure (title + content) to the editor
+    final title = template.titlePlaceholder;
+    final content = template.contentPlaceholder;
+    setState(() {
+      if (title.isNotEmpty) _titleController.text = title;
+      if (content.isNotEmpty) _contentController.text = content;
+      if (content.isNotEmpty) _contentController.selection = TextSelection.collapsed(offset: _contentController.text.length);
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Applied template: ${template.name}')),
+      );
+    }
   }
 
   Future<void> _uploadPendingMedia(String entryId) async {
@@ -425,10 +516,12 @@ class _EntryEditorScreenState extends State<EntryEditorScreen> {
                       letterSpacing: 0.2,
                     ),
                     decoration: InputDecoration(
-                      hintText: "What's on your mind? Start writing your Journal",
+                      hintText: "Start with something positive — e.g. one thing you're grateful for, a small win from today, or how you're feeling right now. Your words matter.",
                       hintStyle: TextStyle(
                         color: Theme.of(context).colorScheme.onSurface.withOpacity(0.45),
+                        height: 1.5,
                       ),
+                      hintMaxLines: 3,
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
@@ -641,6 +734,79 @@ class _MediaThumbnail extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Bottom sheet: pick an AI inspiration action (prompt, improve, grammar, expand, soften, title, questions).
+class _InspirationActionSheet extends StatelessWidget {
+  const _InspirationActionSheet({required this.hasContent});
+
+  final bool hasContent;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final mediaQuery = MediaQuery.of(context);
+    final maxHeight = mediaQuery.size.height * 0.7 - mediaQuery.padding.top - mediaQuery.viewPadding.bottom;
+    final actions = <_InspirationAction>[
+      _InspirationAction(id: 'prompt', icon: Icons.lightbulb_outline, label: 'Get a writing prompt', subtitle: 'Add a question or idea to write about'),
+      _InspirationAction(id: 'improve', icon: Icons.auto_awesome, label: 'Improve wording', subtitle: 'Rephrase for clarity and flow', needsContent: true),
+      _InspirationAction(id: 'grammar', icon: Icons.spellcheck, label: 'Fix grammar', subtitle: 'Correct spelling and grammar only', needsContent: true),
+      _InspirationAction(id: 'expand', icon: Icons.unfold_more, label: 'Expand', subtitle: 'Turn into 2–3 reflective sentences', needsContent: true),
+      _InspirationAction(id: 'soften', icon: Icons.favorite_border, label: 'Soften tone', subtitle: 'Kinder, self-compassionate rephrase', needsContent: true),
+      _InspirationAction(id: 'title', icon: Icons.title, label: 'Suggest a title', subtitle: 'AI suggests a short title for this entry'),
+      _InspirationAction(id: 'questions', icon: Icons.help_outline, label: 'Reflection questions', subtitle: '1–2 follow-up questions to ponder'),
+    ];
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Ask AI Inspiration', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text(
+                  'Improve your entry or get a prompt to write.',
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 16),
+                ...actions.map((a) {
+                  final enabled = !a.needsContent || hasContent;
+                  return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2),
+                    dense: true,
+                    leading: Icon(a.icon, color: enabled ? null : theme.colorScheme.outline, size: 22),
+                    title: Text(a.label, style: TextStyle(color: enabled ? null : theme.colorScheme.outline, fontSize: 14)),
+                    subtitle: Text(a.subtitle, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant), maxLines: 2),
+                    enabled: enabled,
+                    onTap: enabled ? () => Navigator.pop(context, a.id) : null,
+                  );
+                }),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InspirationAction {
+  const _InspirationAction({
+    required this.id,
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    this.needsContent = false,
+  });
+  final String id;
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final bool needsContent;
 }
 
 class _BottomBarChip extends StatelessWidget {

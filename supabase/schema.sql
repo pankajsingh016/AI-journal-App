@@ -235,6 +235,13 @@ ALTER TABLE ai_conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_insights ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_goals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE streaks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE templates ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can view system templates" ON templates FOR SELECT USING (is_system = TRUE);
+CREATE POLICY "Users can view own templates" ON templates FOR SELECT USING (auth.uid() = created_by);
+CREATE POLICY "Users can insert own templates" ON templates FOR INSERT WITH CHECK (auth.uid() = created_by);
+CREATE POLICY "Users can update own templates" ON templates FOR UPDATE USING (auth.uid() = created_by);
+CREATE POLICY "Users can delete own templates" ON templates FOR DELETE USING (auth.uid() = created_by);
 
 CREATE POLICY "Users can view own data" ON users FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users can update own data" ON users FOR UPDATE USING (auth.uid() = id);

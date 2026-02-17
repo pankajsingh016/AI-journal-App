@@ -1,5 +1,6 @@
 """AI endpoints: prompt, chat (SSE), improve-text."""
 import json
+import random
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -9,9 +10,11 @@ from pydantic import BaseModel
 from app.core.deps import get_current_user_id
 from app.core.errors import AIServiceError
 from app.db.supabase import get_supabase
-from app.services.ai_service import generate_prompt, improve_text, chat_stream
+from app.services.ai_service import generate_prompt, improve_text, chat_stream, inspiration_action
 
 router = APIRouter()
+
+INSPIRATION_ACTIONS = {"improve", "grammar", "expand", "soften", "title", "questions"}
 
 
 class ImproveTextRequest(BaseModel):
@@ -24,6 +27,16 @@ class ChatRequest(BaseModel):
     entry_id: str | None = None
 
 
+# Fallback when Groq is unavailable so "Get a writing prompt" always gives the user something.
+FALLBACK_PROMPTS = [
+    "What is one thing you're grateful for today?",
+    "What was a small win or good moment today?",
+    "How are you feeling right now, in one sentence?",
+    "What would make tomorrow a little better?",
+    "Who or what made you smile recently?",
+]
+
+
 @router.post("/generate-prompt")
 async def get_daily_prompt(
     context: str | None = None,
@@ -31,9 +44,9 @@ async def get_daily_prompt(
 ):
     try:
         prompt_text = generate_prompt(context)
-        return {"prompt": prompt_text}
-    except AIServiceError as e:
-        raise AIServiceError(e.message)
+        return {"prompt": prompt_text or FALLBACK_PROMPTS[0]}
+    except AIServiceError:
+        return {"prompt": random.choice(FALLBACK_PROMPTS)}
 
 
 @router.post("/improve-text")
@@ -44,6 +57,27 @@ async def improve_writing(
     try:
         result = improve_text(body.text, body.instruction)
         return {"original": body.text, "improved": result}
+    except AIServiceError as e:
+        raise AIServiceError(e.message)
+
+
+class InspirationRequest(BaseModel):
+    text: str = ""
+    action: str  # improve | grammar | expand | soften | title | questions
+
+
+@router.post("/inspiration")
+async def run_inspiration(
+    body: InspirationRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Run an AI inspiration action on the given text. Returns { result: str }."""
+    if body.action not in INSPIRATION_ACTIONS:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"action must be one of: {sorted(INSPIRATION_ACTIONS)}")
+    try:
+        result = inspiration_action(body.text, body.action)
+        return {"result": result}
     except AIServiceError as e:
         raise AIServiceError(e.message)
 

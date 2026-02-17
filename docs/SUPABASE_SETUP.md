@@ -131,9 +131,25 @@ If you see **"Storage permission denied"**, follow **[SUPABASE_STORAGE_JOURNAL_M
 
 ---
 
-## 6. Checklist
+## 6. “Failed to create entry” or error 42501
 
-- [ ] Supabase project created; **Project URL** and **service_role** key in backend `.env`.
+**PostgreSQL 42501** means *insufficient privilege*. When creating a journal entry, the backend inserts into `journal_entries` (and may insert into `users`). Row Level Security (RLS) allows those inserts only when the request has the right role.
+
+- The **backend must use the service_role key** so that Supabase treats the request as privileged and allows the insert. The **anon** key does not have a user context when the backend calls Supabase, so `auth.uid()` is null and RLS blocks the insert → 42501.
+
+**Fix:**
+
+1. In **backend `.env`**, set **`SUPABASE_SERVICE_KEY`** to the **service_role** secret (Supabase Dashboard → **Project Settings** → **API** → copy the **service_role** key). Do **not** use the anon (public) key here.
+2. Restart the backend.
+3. Try creating an entry again.
+
+If you see a clear message like *“Database permission denied (42501). The backend must use the Supabase service_role key…”*, follow that message and the steps above.
+
+---
+
+## 7. Checklist
+
+- [ ] Supabase project created; **Project URL** and **SUPABASE_SERVICE_KEY** (service_role) in backend `.env` — not the anon key.
 - [ ] **SQL Editor**: full **`supabase/schema.sql`** run (so `journal_entries`, **`entry_media`**, etc. exist).
 - [ ] **Table Editor**: table **`entry_media`** exists and has the columns above.
 - [ ] (Optional) RLS policies on **`entry_media`** added if you use a key that respects RLS.
@@ -143,7 +159,7 @@ If you see **"Storage permission denied"**, follow **[SUPABASE_STORAGE_JOURNAL_M
 
 ---
 
-## 7. If “Media record could not be created” still appears
+## 8. If “Media record could not be created” still appears
 
 1. **Backend**: The code now uses `.select("*")` on insert so the created row is returned. Restart the backend after pulling the fix.
 2. **Table**: In **Table Editor** → **entry_media**, try inserting one row by hand (entry_id = an existing journal entry id). If that fails, the table or RLS is the issue.

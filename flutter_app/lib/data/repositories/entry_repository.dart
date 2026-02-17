@@ -137,6 +137,12 @@ class EntryRepository {
     return data['prompt'] as String? ?? 'What are you grateful for today?';
   }
 
+  /// Run an AI inspiration action (improve, grammar, expand, soften, title, questions). Returns result text or null.
+  Future<String?> runInspiration({required String text, required String action}) async {
+    final data = await _api.post(ApiConstants.aiInspiration, {'text': text, 'action': action});
+    return data['result']?.toString();
+  }
+
   /// Upload a photo (or other image) for an entry. Entry must already exist.
   Future<EntryMediaItem?> uploadEntryMedia(String entryId, XFile imageFile) async {
     final data = await _api.postMultipartXFile(ApiConstants.entryMedia(entryId), imageFile);

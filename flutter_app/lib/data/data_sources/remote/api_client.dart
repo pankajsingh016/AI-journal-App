@@ -176,6 +176,7 @@ class ApiClient {
   }
 
   /// POST with multipart file from [XFile] (e.g. entry media upload).
+  /// Field name must be "file" to match backend UploadFile parameter.
   Future<Map<String, dynamic>> postMultipartXFile(
     String path,
     XFile xFile, {

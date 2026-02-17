@@ -13,9 +13,9 @@ class EntryMediaItem {
 
   static EntryMediaItem? fromJson(dynamic json) {
     if (json is! Map) return null;
-    final id = json['id']?.toString();
-    final url = json['url']?.toString();
-    if (id == null || url == null) return null;
+    final id = json['id']?.toString()?.trim();
+    final url = json['url']?.toString()?.trim();
+    if (id == null || id.isEmpty || url == null || url.isEmpty) return null;
     return EntryMediaItem(
       id: id,
       url: url,

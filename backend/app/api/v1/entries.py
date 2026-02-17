@@ -2,7 +2,6 @@
 import logging
 import uuid
 from datetime import date, datetime, time
-from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
@@ -26,14 +25,18 @@ from app.config import get_settings
 router = APIRouter()
 
 
-def _storage_public_url(bucket_name: str, path: str) -> str:
-    """Build the public URL for a storage object. Path is URL-encoded (slashes preserved)."""
-    base = get_settings().supabase_url.rstrip("/")
+def _storage_public_url(supabase, bucket_name: str, path: str) -> str:
+    """Use Supabase client's get_public_url so format matches exactly (same as avatar)."""
     raw = (path or "").strip().lstrip("/")
     if not raw:
+        base = (get_settings().supabase_url or "").strip().rstrip("/")
+        if not base or "placeholder" in base.lower():
+            raise AppException(
+                ErrorCode.SERVICE_UNAVAILABLE,
+                "SUPABASE_URL is not set. Set it in backend .env so journal images work.",
+            )
         return f"{base}/storage/v1/object/public/{bucket_name}/"
-    encoded = quote(raw, safe="/")
-    return f"{base}/storage/v1/object/public/{bucket_name}/{encoded}"
+    return supabase.storage.from_(bucket_name).get_public_url(raw)
 
 
 def _storage_upload_supabase(supabase, bucket_name: str, path: str, content: bytes, content_type: str = "image/jpeg") -> None:
@@ -85,7 +88,7 @@ async def list_entries(
             path = m.get("storage_path")
             bucket = m.get("storage_bucket") or "journal-media"
             if path:
-                url = _storage_public_url(bucket, path)
+                url = _storage_public_url(supabase, bucket, path)
                 media_by_entry[eid].append(EntryMediaItem(
                     id=str(m.get("id", "")),
                     url=url,
@@ -265,7 +268,7 @@ def _get_entry_media(supabase, entry_id: str) -> list[EntryMediaItem]:
         path = m.get("storage_path")
         bucket = m.get("storage_bucket") or bucket_name
         if path:
-            url = _storage_public_url(bucket, path)
+            url = _storage_public_url(supabase, bucket, path)
             out.append(EntryMediaItem(
                 id=str(m.get("id", "")),
                 url=url,
@@ -475,7 +478,7 @@ async def upload_entry_media(
         bucket_name = "journal-media"
         content_type = file.content_type or "image/jpeg"
         _storage_upload_supabase(supabase, bucket_name, path, content, content_type)
-        url = _storage_public_url(bucket_name, path)
+        url = _storage_public_url(supabase, bucket_name, path)
         media_type = file.content_type or "image/jpeg"
         # Use .execute() only; insert() returns inserted row by default (representation). Chaining .select() can return a builder and cause "SyncQueryRequest Builder Object" errors.
         ins = supabase.table("entry_media").insert({

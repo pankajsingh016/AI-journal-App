@@ -539,7 +539,9 @@ class _EntryEditorScreenState extends State<EntryEditorScreen> {
                       child: ListView(
                         scrollDirection: Axis.horizontal,
                         children: [
-                          ...?(_entryWithMedia?.media ?? widget.entry?.media)?.map((m) => _MediaThumbnail.url(url: m.url)),
+                          ...?(_entryWithMedia?.media ?? widget.entry?.media)
+                              ?.where((m) => m.url.trim().isNotEmpty)
+                              .map((m) => _MediaThumbnail.url(url: AppConfig.rewriteMediaUrl(m.url))),
                           ...List.generate(_pendingImages.length, (i) => _MediaThumbnail.xFile(xFile: _pendingImages[i], onRemove: () => _removePendingImage(i))),
                         ],
                       ),

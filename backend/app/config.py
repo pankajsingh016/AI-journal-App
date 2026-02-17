@@ -1,7 +1,18 @@
 """Application configuration from environment variables."""
 from functools import lru_cache
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, field_validator
+
+
+def _strip(v: str) -> str:
+    """Strip whitespace, CRLF, and surrounding quotes so Docker --env-file values are valid."""
+    if not isinstance(v, str):
+        return v
+    s = v.strip().strip("\r")
+    # Docker --env-file often passes quoted values with quotes included; remove them
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ("'", '"'):
+        s = s[1:-1]
+    return s
 
 
 class Settings(BaseSettings):
@@ -18,6 +29,12 @@ class Settings(BaseSettings):
 
     # JWT (set JWT_SECRET in .env for production)
     jwt_secret: str = Field("change-me-in-env-dev-only", env="JWT_SECRET")
+
+    @field_validator("supabase_url", "supabase_service_key", "supabase_anon_key", "jwt_secret", mode="before")
+    @classmethod
+    def strip_secrets(cls, v: str) -> str:
+        return _strip(v) if v else v
+
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7

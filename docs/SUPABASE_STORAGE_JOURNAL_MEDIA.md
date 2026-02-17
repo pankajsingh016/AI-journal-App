@@ -2,6 +2,9 @@
 
 If you see **"Storage permission denied"** or **"Photo upload failed"** when adding photos to a journal entry, follow these steps in order.
 
+**If profile picture works but journal entry photos don’t load:**  
+Profile uses the **avatars** bucket; journal photos use the **journal-media** bucket. Create a bucket named **journal-media**, set it to **Public**, and add the storage policies below. The app uses the same Supabase URL for both; only the bucket name differs.
+
 ---
 
 ## 1. Backend .env – use the **service_role** key
@@ -83,6 +86,25 @@ If it still fails, check:
 
 ---
 
-## 5. Optional: Flutter image URLs
+## 5. Flutter image URLs (required for photos to show)
 
-For images to load in the app, the backend builds URLs using `SUPABASE_URL`. Optionally set the same URL in `flutter_app/assets/.env` as `SUPABASE_URL` so the app can rewrite storage URLs if needed. See `docs/JOURNAL_IMAGES_SETUP.md`.
+For journal photos to **load** in the app (history, list, entry editor):
+
+1. In **backend** `.env`: set `SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co` with **no quotes** (Docker `--env-file` can break quoted values).
+2. In **Flutter** `flutter_app/assets/.env`: set the **same** URL:
+   ```env
+   SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+   ```
+   Use the exact same value as in backend `.env`. No quotes.
+
+If either is missing or wrong, you may see "can't save photos" or "old photos don't show". Backend needs the URL to build image URLs; Flutter uses it to display them.
+
+---
+
+## 6. Checklist if photos still don’t save or don’t show
+
+- [ ] Backend `.env`: `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` set (service_role key), **no quotes**.
+- [ ] Flutter `assets/.env`: `SUPABASE_URL` set to the **same** value as backend, **no quotes**.
+- [ ] Supabase Storage: bucket **`journal-media`** exists and is **Public**.
+- [ ] Supabase SQL: the three storage policies (upload, update, public read) exist for `journal-media`.
+- [ ] After changing `.env`: restart backend and **restart the Flutter app** (full restart so dotenv reloads).

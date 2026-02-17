@@ -146,6 +146,9 @@ class EntryRepository {
   /// Upload a photo (or other image) for an entry. Entry must already exist.
   Future<EntryMediaItem?> uploadEntryMedia(String entryId, XFile imageFile) async {
     final data = await _api.postMultipartXFile(ApiConstants.entryMedia(entryId), imageFile);
-    return EntryMediaItem.fromJson(data);
+    if (data is! Map) return null;
+    // API returns { id, url, file_name, mime_type } directly
+    final map = data is Map<String, dynamic> ? data : Map<String, dynamic>.from(data as Map);
+    return EntryMediaItem.fromJson(map);
   }
 }

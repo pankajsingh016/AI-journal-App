@@ -67,7 +67,14 @@ docker run -d -p 8000:8000 --restart unless-stopped \
 curl http://localhost:8000/health
 ```
 
-Your API is at **`http://<EC2-PUBLIC-IP>:8000`**. In the Flutter app set `API_BASE_URL` to that URL (no trailing slash).
+Your API is at **`http://<EC2-PUBLIC-IP>:8000`**.
+
+**Flutter app — what to put in `API_BASE_URL`:**  
+In `flutter_app/assets/.env` set:
+```env
+API_BASE_URL=http://YOUR_EC2_PUBLIC_IP:8000
+```
+Replace `YOUR_EC2_PUBLIC_IP` with your EC2 instance’s public IP (no trailing slash, no `/api/v1` — the app adds that). Example: `API_BASE_URL=http://13.234.56.78:8000`.
 
 **To update after a new push:** run the “Deploy / update from GitHub” block again (clone/pull, build, stop/rm container, run).
 
@@ -77,24 +84,68 @@ Your API is at **`http://<EC2-PUBLIC-IP>:8000`**. In the Flutter app set `API_BA
 
 The backend has a **Dockerfile** in `backend/`. Use it to build and run the API in any container-friendly AWS service.
 
-### Build and run locally
+### Quick start — run the API in Docker (local)
 
-From the **repo root**:
+From **backend/** (ensure `backend/.env` exists with `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_ANON_KEY`, `JWT_SECRET`; use no quotes around values):
+
+```bash
+cd backend
+./run-docker.sh
+```
+
+Or run the two commands manually:
+
+```bash
+cd backend
+docker build -t ai-journal-api -f Dockerfile .
+docker run -p 8000:8000 --env-file .env ai-journal-api
+```
+
+From **repo root**:
 
 ```bash
 docker build -t ai-journal-api -f backend/Dockerfile backend/
 docker run -p 8000:8000 --env-file backend/.env ai-journal-api
 ```
 
-Or from **backend/**:
-
-```bash
-cd backend
-docker build -t ai-journal-api .
-docker run -p 8000:8000 --env-file .env ai-journal-api
-```
-
 **Note:** Pass env vars via `--env-file` or `-e KEY=value`. Do not bake secrets into the image.
+
+### Login fails when backend runs in Docker (same DB keys)
+
+If login works when you run the backend locally but fails when it runs in a container (with the same Supabase keys), check the following:
+
+1. **Env file path**  
+   `--env-file` must point to the file that has your real keys. From repo root use `--env-file backend/.env`; from `backend/` use `--env-file .env`. On a server, use the path to the server’s `.env` (e.g. `--env-file ~/.env`).
+
+2. **Trailing spaces / CRLF in `.env`**  
+   If the `.env` file was edited on Windows or has trailing spaces, `SUPABASE_URL` or keys can contain `\r` or spaces and Supabase requests will fail. The backend now strips whitespace from these values. Re-save the file with Unix line endings (LF) and no trailing space after values to be safe.
+
+3. **`JWT_SECRET` must be the same**  
+   The backend signs tokens with `JWT_SECRET`. If the container gets a different value (or the default), tokens from a previous run won’t validate. Ensure the same `JWT_SECRET` is in the `.env` you pass to `docker run`. If you changed it, clear app data or log in again so the app gets new tokens from the Docker backend.
+
+4. **Flutter `API_BASE_URL`**  
+   The app must call the backend that’s actually running. For a container on your machine: use `http://localhost:8000` (iOS simulator or host); for Android emulator use `http://10.0.2.2:8000`. No trailing slash; the app adds `/api/v1` itself.
+
+5. **Confirm env vars in the container**  
+   Run:
+   ```bash
+   docker run --rm --env-file backend/.env ai-journal-api python -c "from app.config import get_settings; s=get_settings(); print('URL ok:', s.supabase_url.startswith('https://')); print('JWT set:', bool(s.jwt_secret and s.jwt_secret != 'change-me-in-env-dev-only'))"
+   ```
+   You should see `URL ok: True` and `JWT set: True`. If not, fix the `.env` and path used in `--env-file`.
+
+6. **What to use for `API_BASE_URL` when the backend runs in Docker**  
+   The URL does **not** change because the backend is in Docker: the app must reach the **host and port** where the container is exposed. Use the same value you would use if the backend ran on the host:
+   - **App on same machine (e.g. Chrome / iOS Simulator):** `http://localhost:8000`
+   - **App on Android emulator:** `http://10.0.2.2:8000` (10.0.2.2 is the host from the emulator)
+   - **App on a physical device (same Wi‑Fi as the host):** `http://<your-machine-ip>:8000` (e.g. `http://192.168.1.32:8000`)
+   So if it works locally with `http://192.168.1.32:8000`, keep that when the backend is in Docker on the same machine.
+
+7. **See the real login error**  
+   The message “Login failed. Check your email and password…” is returned when an **unexpected** error happens in the backend (e.g. Supabase unreachable from the container). To see the actual cause, check the container logs after a failed login:
+   ```bash
+   docker logs <container-name>
+   ```
+   Look for a line like `Login failed (backend error): ...` and the traceback. That will show e.g. connection errors to Supabase or invalid keys.
 
 ### Deploy with Docker on AWS free tier
 

@@ -243,8 +243,11 @@ class _JournalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final firstMediaUrl = entry.media != null && entry.media!.isNotEmpty
-        ? _mediaUrl(entry.media!.first.url)
+    final rawUrl = entry.media != null && entry.media!.isNotEmpty
+        ? entry.media!.first.url.trim()
+        : null;
+    final firstMediaUrl = (rawUrl != null && rawUrl.isNotEmpty)
+        ? _mediaUrl(rawUrl)
         : null;
     final title = _entryTitle(entry);
     final preview = _entryPreview(entry, maxChars: 90);

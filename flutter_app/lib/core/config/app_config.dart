@@ -11,9 +11,16 @@ class AppConfig {
   /// Optional Supabase project URL (e.g. https://xxx.supabase.co) for storage image URLs.
   /// If set, journal media URLs from the API are rewritten to use this host so images load
   /// even when the backend has a different or placeholder SUPABASE_URL.
+  /// Strips surrounding quotes so SUPABASE_URL="https://..." in .env works.
   static String? get supabaseUrl {
-    final s = dotenv.env['SUPABASE_URL']?.trim();
-    return (s != null && s.isNotEmpty) ? s.replaceFirst(RegExp(r'/$'), '') : null;
+    String? s = dotenv.env['SUPABASE_URL']?.trim();
+    if (s == null || s.isEmpty) return null;
+    // Strip optional surrounding quotes (e.g. from .env: SUPABASE_URL="https://...")
+    if (s.length >= 2 && (s.startsWith('"') && s.endsWith('"') || s.startsWith("'") && s.endsWith("'"))) {
+      s = s.substring(1, s.length - 1).trim();
+    }
+    if (s.isEmpty) return null;
+    return s.replaceFirst(RegExp(r'/$'), '');
   }
 
   /// Rewrite a storage URL to use [supabaseUrl] if set. Use for all entry media images.
@@ -23,8 +30,14 @@ class AppConfig {
   static String rewriteMediaUrl(String url) {
     final raw = url.trim();
     if (raw.isEmpty) return url;
+    // Use URL as-is when it's already a valid Supabase storage URL (same as profile picture).
+    if (raw.startsWith('http') &&
+        raw.contains('supabase.co') &&
+        raw.contains('/storage/v1/object/public/')) {
+      return raw;
+    }
     final base = supabaseUrl;
-    if (base == null) return raw;
+    if (base == null || base.isEmpty) return raw;
     try {
       final uri = Uri.parse(raw);
       if (!uri.path.contains('/storage/v1/object/public/')) return raw;

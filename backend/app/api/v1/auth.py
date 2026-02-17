@@ -1,8 +1,12 @@
 """Auth endpoints: register, login, refresh, forgot/reset password."""
+import logging
+
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 
 from app.core.deps import get_current_user_id
+
+logger = logging.getLogger(__name__)
 from app.core.errors import ConflictError, UnauthorizedError, ValidationError
 from app.schemas.auth import (
     RegisterRequest,
@@ -42,6 +46,8 @@ async def login(body: LoginRequest):
     except (UnauthorizedError, ConflictError, ValidationError):
         raise
     except Exception as e:
+        # Log the real cause (e.g. Supabase connection error in Docker) so docker logs show it
+        logger.exception("Login failed (backend error): %s", e)
         msg = "Login failed. Check your email and password, and confirm your email if required."
         if "confirm" in str(e).lower() or "email" in str(e).lower():
             msg = "Please confirm your email first. Check your inbox for the verification link."

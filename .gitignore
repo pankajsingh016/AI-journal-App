@@ -72,13 +72,27 @@ backend/**/*.egg
 !backend/.env.example
 
 # -----------------------------------------------------------------------------
-# Secrets / Env (do not commit)
+# Secrets / Env — DO NOT COMMIT (never add these to git)
 # -----------------------------------------------------------------------------
 .env
+.env.*
 .env.local
 .env.*.local
+*.env
+backend/.env
+backend/.env.*
+backend/.env.local
 flutter_app/assets/.env
+flutter_app/assets/.env.*
+flutter_app/assets/.env.local
+# Allow only example files (no real keys)
+!backend/.env.example
 !flutter_app/assets/.env.example
+# Common secret / key files
+*.pem
+*.key
+secrets/
+.secrets
 
 # -----------------------------------------------------------------------------
 # Optional: uncomment if you use Node/tooling

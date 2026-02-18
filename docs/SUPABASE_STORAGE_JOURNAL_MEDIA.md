@@ -1,5 +1,7 @@
 # Journal Media Storage (entry photos)
 
+**To run the same app everywhere (local, server, Docker):** use the **same** `.env` on every machine: `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` (service_role key), **no quotes**. Create the **`journal-media`** bucket in Supabase (Storage → New bucket, **Public**), and add the three storage policies below. Then journal photos work locally and on the server.
+
 If you see **"Storage permission denied"** or **"Photo upload failed"** when adding photos to a journal entry, follow these steps in order.
 
 **If profile picture works but journal entry photos don’t load:**  
@@ -108,3 +110,27 @@ If either is missing or wrong, you may see "can't save photos" or "old photos do
 - [ ] Supabase Storage: bucket **`journal-media`** exists and is **Public**.
 - [ ] Supabase SQL: the three storage policies (upload, update, public read) exist for `journal-media`.
 - [ ] After changing `.env`: restart backend and **restart the Flutter app** (full restart so dotenv reloads).
+
+---
+
+## 7. Works locally but image upload / access fails on the server
+
+If the **same Docker image** works on your PC but you get image upload or journal image access errors on the server:
+
+1. **Use the same .env on the server as locally**  
+   Copy your local `backend/.env` to the server (e.g. `~/.env` or `backend/.env`) and run:
+   ```bash
+   docker run -d -p 8000:8000 --restart unless-stopped --env-file /path/to/.env --name api ai-journal-api
+   ```
+   The file must contain the **same** `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` (no quotes, no extra spaces).
+
+2. **No quotes in .env on the server**  
+   Use `SUPABASE_URL=https://xxx.supabase.co` not `SUPABASE_URL="https://..."`. Some environments break when values are quoted.
+
+3. **Server must reach Supabase**  
+   The server needs outbound HTTPS to `*.supabase.co`. If you use a firewall or security group (e.g. AWS), allow **egress** HTTPS (port 443) to the internet or to Supabase IPs.
+
+4. **Check server logs**  
+   On upload failure you’ll see: `Journal media upload failed: <error>`.  
+   If URLs fail to build you’ll see: `Skipping journal media URL (entry ...): <error>`.  
+   Use that message to fix config (wrong/missing SUPABASE_URL) or network (cannot reach Supabase).

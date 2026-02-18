@@ -2,6 +2,7 @@
 import logging
 import uuid
 from datetime import date, datetime, time
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
@@ -24,19 +25,40 @@ from app.config import get_settings
 
 router = APIRouter()
 
+# Bucket name used for journal entry photos (must exist in Supabase Storage, public).
+JOURNAL_MEDIA_BUCKET = "journal-media"
+
+
+def _storage_base_url() -> str:
+    """Validated Supabase base URL for storage (single source of truth). Works everywhere when .env is set."""
+    base = (get_settings().supabase_url or "").strip().rstrip("/")
+    if not base or "placeholder" in base.lower():
+        raise AppException(
+            ErrorCode.SERVICE_UNAVAILABLE,
+            "SUPABASE_URL is not set. Set it in backend .env (no quotes). See docs/SUPABASE_STORAGE_JOURNAL_MEDIA.md.",
+        )
+    if not base.startswith("http://") and not base.startswith("https://"):
+        base = "https://" + base
+    if ".supabase.co" not in base:
+        raise AppException(
+            ErrorCode.SERVICE_UNAVAILABLE,
+            "SUPABASE_URL must be your Supabase project URL (e.g. https://xxx.supabase.co). Check backend .env.",
+        )
+    return base
+
 
 def _storage_public_url(supabase, bucket_name: str, path: str) -> str:
-    """Use Supabase client's get_public_url so format matches exactly (same as avatar)."""
+    """Build public storage URL. Uses client get_public_url with manual fallback so it works everywhere."""
     raw = (path or "").strip().lstrip("/")
+    base = _storage_base_url()
     if not raw:
-        base = (get_settings().supabase_url or "").strip().rstrip("/")
-        if not base or "placeholder" in base.lower():
-            raise AppException(
-                ErrorCode.SERVICE_UNAVAILABLE,
-                "SUPABASE_URL is not set. Set it in backend .env so journal images work.",
-            )
         return f"{base}/storage/v1/object/public/{bucket_name}/"
-    return supabase.storage.from_(bucket_name).get_public_url(raw)
+    try:
+        return supabase.storage.from_(bucket_name).get_public_url(raw)
+    except Exception:
+        # Fallback: build URL manually (robust when client or env differs by environment)
+        encoded = quote(raw, safe="/")
+        return f"{base}/storage/v1/object/public/{bucket_name}/{encoded}"
 
 
 def _storage_upload_supabase(supabase, bucket_name: str, path: str, content: bytes, content_type: str = "image/jpeg") -> None:
@@ -88,13 +110,16 @@ async def list_entries(
             path = m.get("storage_path")
             bucket = m.get("storage_bucket") or "journal-media"
             if path:
-                url = _storage_public_url(supabase, bucket, path)
-                media_by_entry[eid].append(EntryMediaItem(
-                    id=str(m.get("id", "")),
-                    url=url,
-                    file_name=m.get("file_name"),
-                    mime_type=m.get("mime_type"),
-                ))
+                try:
+                    url = _storage_public_url(supabase, bucket, path)
+                    media_by_entry[eid].append(EntryMediaItem(
+                        id=str(m.get("id", "")),
+                        url=url,
+                        file_name=m.get("file_name"),
+                        mime_type=m.get("mime_type"),
+                    ))
+                except Exception as e:
+                    logger.warning("Skipping journal media URL (entry %s): %s", eid, e)
     out = []
     for row in rows:
         eid = str(row.get("id", ""))
@@ -268,13 +293,16 @@ def _get_entry_media(supabase, entry_id: str) -> list[EntryMediaItem]:
         path = m.get("storage_path")
         bucket = m.get("storage_bucket") or bucket_name
         if path:
-            url = _storage_public_url(supabase, bucket, path)
-            out.append(EntryMediaItem(
-                id=str(m.get("id", "")),
-                url=url,
-                file_name=m.get("file_name"),
-                mime_type=m.get("mime_type"),
-            ))
+            try:
+                url = _storage_public_url(supabase, bucket, path)
+                out.append(EntryMediaItem(
+                    id=str(m.get("id", "")),
+                    url=url,
+                    file_name=m.get("file_name"),
+                    mime_type=m.get("mime_type"),
+                ))
+            except Exception as e:
+                logger.warning("Skipping journal media URL (entry %s): %s", entry_id, e)
     return out
 
 
@@ -417,8 +445,20 @@ async def remove_favorite(entry_id: UUID, user_id: str = Depends(get_current_use
 
 
 def _entry_media_error(e: Exception) -> AppException:
-    """Turn storage/DB errors into a clear message for the client."""
+    """Turn storage/DB errors into a clear message for the client (works on server and local)."""
     err_msg = str(e).lower()
+    if "invalid url" in err_msg or "invalid_url" in err_msg:
+        return AppException(
+            ErrorCode.SERVICE_UNAVAILABLE,
+            "Server config: SUPABASE_URL is wrong or not set. On the server, use the same .env as local (no quotes). See docs/SUPABASE_STORAGE_JOURNAL_MEDIA.md.",
+            details={"hint": "Set SUPABASE_URL and SUPABASE_SERVICE_KEY in the .env used for docker run --env-file."},
+        )
+    if "connection" in err_msg or "timeout" in err_msg or "name or service not known" in err_msg or "certificate" in err_msg or "unreachable" in err_msg:
+        return AppException(
+            ErrorCode.SERVICE_UNAVAILABLE,
+            "Server cannot reach Supabase. On the server: 1) Use the same .env as local. 2) Allow outbound HTTPS to *.supabase.co (firewall/security group).",
+            details={"hint": str(e)},
+        )
     if "bucket" in err_msg and ("not found" in err_msg or "does not exist" in err_msg):
         return AppException(
             ErrorCode.SERVICE_UNAVAILABLE,
@@ -440,7 +480,6 @@ def _entry_media_error(e: Exception) -> AppException:
             "Storage permission denied. In Supabase: create bucket 'journal-media' (Storage → New bucket, Public ON) and run the policy SQL in docs/SUPABASE_STORAGE_JOURNAL_MEDIA.md.",
             details={"hint": str(e)},
         )
-    # Surface the real error so we can fix bucket/RLS/config issues
     return AppException(
         ErrorCode.SERVICE_UNAVAILABLE,
         f"Photo upload failed. {e!s}",

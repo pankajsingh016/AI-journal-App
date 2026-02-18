@@ -19,21 +19,37 @@ from app.api.v1 import router as api_v1_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import logging
+    log = logging.getLogger("uvicorn.error")
     settings = get_settings()
     if settings.sentry_dsn:
         import sentry_sdk
         from sentry_sdk.integrations.fastapi import FastApiIntegration
         sentry_sdk.init(dsn=settings.sentry_dsn, integrations=[FastApiIntegration()])
-    import logging
-    log = logging.getLogger("uvicorn.error")
-    if "placeholder" in (settings.supabase_url or "").lower():
+    # Validate Supabase config so journal-media works everywhere (local, server, Docker)
+    base = (settings.supabase_url or "").strip().rstrip("/")
+    if not base or "placeholder" in base.lower():
         log.warning(
-            "SUPABASE_URL is not set or is placeholder. Set it in backend .env to your Supabase project URL so journal images load."
+            "SUPABASE_URL is missing or placeholder. Set it in .env (no quotes) or journal/avatar media will fail."
+        )
+    elif ".supabase.co" not in base:
+        log.warning(
+            "SUPABASE_URL should be https://YOUR_REF.supabase.co. Current value may be wrong: %s",
+            base[:50] + "..." if len(base) > 50 else base,
         )
     if not settings.supabase_service_key or "placeholder" in (settings.supabase_service_key or "").lower():
         log.warning(
-            "SUPABASE_SERVICE_KEY is not set or is placeholder. Set it in backend .env to the service_role key (Supabase Dashboard → API) so journal photo uploads work. See docs/SUPABASE_STORAGE_JOURNAL_MEDIA.md."
+            "SUPABASE_SERVICE_KEY is missing or placeholder. Set service_role key in .env (no quotes)."
         )
+    else:
+        try:
+            from app.db.supabase import get_supabase
+            get_supabase()
+        except Exception as e:
+            log.warning(
+                "Supabase client failed to create: %s. Journal media and avatar will not work. Fix SUPABASE_URL and SUPABASE_SERVICE_KEY in .env (same as local, no quotes).",
+                e,
+            )
     yield
 
 
